@@ -22,6 +22,8 @@ import android.widget.TextView;
 public class TouchLayoutActivity extends Activity {
     private TouchControls controls;
     private SharedPreferences prefs;
+    /** Reset is recreating the page (FF7Recomp #54: its onPause saved the old layout back). */
+    private boolean resetting;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -53,6 +55,7 @@ public class TouchLayoutActivity extends Activity {
         Button reset = new Button(this);
         reset.setText("Reset");
         reset.setOnClickListener(v -> {
+            resetting = true;               // recreate() pauses first: onPause must not save the old layout back
             prefs.edit().remove("touch_layout").apply();
             recreate();
         });
@@ -111,7 +114,7 @@ public class TouchLayoutActivity extends Activity {
     private void save() { prefs.edit().putString("touch_layout", controls.layout()).apply(); }
 
     @Override
-    protected void onPause() { save(); super.onPause(); }
+    protected void onPause() { if (!resetting) save(); super.onPause(); }
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 }

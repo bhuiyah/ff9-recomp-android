@@ -354,3 +354,13 @@ dialog, swap confirm, analog walk, volumes). Edit Memoria.ini stays for everythi
   or managed method names; installed again at the title, ff9_crash_trace), FF9_TRACE_MODCALLS=1
   (each message call into a Memoria.Scripts* assembly, so the last line before a crash names it).
   env.txt only passes FF9_TEST_* and FF9_TRACE_* variables.
+
+## Naming screen with another release's game data (0.1.11, issue 6)
+
+A Galaxy Fold's game data (Bundle scene 8641 behaviours, 5874 resource paths; ours 8794 / 5879)
+gives the naming screen's "Name Input Field" a UIInputPSVitaExtension, a class the current
+Assembly-CSharp doesn't have: the component was dropped, NameSettingUI.Awake failed (Memoria's own
+recovery finds the object but no UIInput), the field stayed empty and no keyboard came. AssetDB.Script
+loads a missing "...PSVitaExtension" script class as its base class (UIInput first in its fields),
+and SceneLoader gives a UIInput with no label its child UILabel. Not tested on that data (we don't
+have it); our data's naming screen is unchanged.

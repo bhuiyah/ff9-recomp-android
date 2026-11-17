@@ -190,6 +190,14 @@ public static class AssetDB {
             try {
                 var a = Assembly.Load(Path.GetFileNameWithoutExtension(asm));
                 t = a.GetType(full);
+                // some copies of the game's data name a subclass the current Assembly-CSharp no longer
+                // has: the naming screen's field is a UIInputPSVitaExtension (UIInput first, its own
+                // fields after). Loaded as the base class, its UIInput is there and the name can be
+                // typed (GitHub issue 6, a Galaxy Fold whose field was missing and showed no keyboard)
+                if (t == null && cls.EndsWith("PSVitaExtension") && a.GetType(full[..^"PSVitaExtension".Length]) is { } baseType) {
+                    Log.Once("script:" + full, $"script class {full} [{asm}] not found: loaded as {baseType.Name}");
+                    t = baseType;
+                }
             } catch (Exception e) { Log.Warn($"script assembly {asm}: {e.Message}"); }
             if (t == null) Log.Once("script:" + full, $"script class {full} [{asm}] not found");
             s = (t, order);

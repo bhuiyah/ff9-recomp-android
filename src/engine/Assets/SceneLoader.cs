@@ -162,10 +162,26 @@ public sealed class SceneBuilder : IPPtrResolver {
                 case NComponent c: FillComponent(c, file.Reader(pid)); break;
             }
         }
+        // a text field loaded from another release's subclass (AssetDB.Script: UIInputPSVitaExtension
+        // as UIInput) whose label didn't come through: its own UILabel, as NGUI needs one
+        foreach (var pid in order)
+            if (made[pid] is NMonoBehaviour { Managed: { } inp } mb && inp.GetType().Name == "UIInput") GiveLabel(mb, inp);
         // a prefab asset's scripts never run: only its instances do
         if (!asset)
             foreach (var pid in order)
                 if (made[pid] is NMonoBehaviour mb) Player.AddBehaviour(mb);
+    }
+
+    static void GiveLabel(NMonoBehaviour mb, object input) {
+        var lf = input.GetType().GetField("label");
+        if (lf == null || lf.GetValue(input) != null) return;
+        foreach (var ch in mb.GameObject.Transform.Children)
+            foreach (var cc in ch.GameObject.Components)
+                if (cc.Managed is { } lbl && lbl.GetType().Name == "UILabel") {
+                    lf.SetValue(input, lbl);
+                    Log.Info($"text field {mb.GameObject.Name}: label set to {ch.GameObject.Name}");
+                    return;
+                }
     }
 
     void FillTransform(NTransform t, BinReader r) {

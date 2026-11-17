@@ -168,6 +168,8 @@ public class LauncherActivity extends Activity {
         if (!Updater.busy && System.currentTimeMillis() - Updater.lastCheck > 3600_000L) checkUpdates(false);
         DownloadQueue.get(this).setListener(this::queueChanged);
         if (ModCatalog.age(this) > 24 * 3600_000L) refreshCatalog(false);     // quietly, once a day
+        // If the launcher was closed while the game was running, sync now so an Upload made then still reaches Steam.
+        if (cloudSaves() && TestControl.gamePid(this) <= 0) cloudAfterGame = true;
         new Thread(() -> {    // achievements earned while playing go to Steam when the launcher is back
             try { SteamLink sl = new SteamLink(this); if (sl.signedIn() && sl.waiting() > 0) sl.sync(); } catch (Exception ignored) { }
         }).start();
@@ -181,7 +183,17 @@ public class LauncherActivity extends Activity {
 
     @Override protected void onNewIntent(Intent i) { super.onNewIntent(i); handleTestIntent(i); }
 
-    @Override protected void onResume() { super.onResume(); Sfx.load(this); hideSystemBars(); if (!busy) { View f = getCurrentFocus(); refresh(); if (f != null && !inContent(f)) f.requestFocus(); } }
+    @Override protected void onResume() {
+        super.onResume();
+        Sfx.load(this);
+        hideSystemBars();
+        if (!busy) { View f = getCurrentFocus(); refresh(); if (f != null && !inContent(f)) f.requestFocus(); }
+        // Back from the game. Once it has closed (not just gone to the background), send what Upload wrote to Steam.
+        if (cloudAfterGame && !busy && cloudSaves() && TestControl.gamePid(this) <= 0) {
+            cloudAfterGame = false;
+            syncCloud(null);
+        }
+    }
 
     /** adb test API: am start ... --ez test_play true presses Play once the launcher is ready. */
     private void handleTestIntent(Intent i) {
@@ -332,6 +344,15 @@ public class LauncherActivity extends Activity {
         Intent g = new Intent(this, GameActivity.class).putExtra("autoload", autoload);
         if (testArgs != null) { g.putExtra("test_args", testArgs); testArgs = null; }
         if (testLoad != null && testLoad.matches("\\d+:\\d+")) { g.putExtra("test_load", testLoad); testLoad = null; }
+        // Fetch Steam's copy before the game starts so Download on the title screen gets it. If the sync fails, the game starts anyway.
+        if (cloudSaves()) {
+            syncCloud(() -> { cloudAfterGame = true; startGame(g); });
+            return;
+        }
+        startGame(g);
+    }
+
+    private void startGame(Intent g) {
         if (Settings.prefs(this).getBoolean("swap_screens", false)) {
             android.hardware.display.DisplayManager dm = (android.hardware.display.DisplayManager) getSystemService(DISPLAY_SERVICE);
             android.view.Display[] ds = dm.getDisplays(android.hardware.display.DisplayManager.DISPLAY_CATEGORY_PRESENTATION);
@@ -1358,6 +1379,7 @@ public class LauncherActivity extends Activity {
         sv.addView(button("Export saves", v -> startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/zip")
                 .putExtra(Intent.EXTRA_TITLE, "FF9Recomp-saves-" + new java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(new java.util.Date()) + ".zip"), EXPORT_SAVES)));
         col.addView(sv);
+        cloudSavesSection(col);
 
         TextView h = heading("Storage");
         h.setPadding(0, dp(14), 0, dp(4));
@@ -1377,6 +1399,91 @@ public class LauncherActivity extends Activity {
         ap.addView(button(up != null ? "Update to " + up.version : "Check for updates", v -> updateOrCheck()));
         col.addView(ap);
         return col;
+    }
+
+    /** Game files > Saves: Steam Cloud saves. Enables syncing with Steam Cloud via the game's Cloud menu on the title screen. */
+    private void cloudSavesSection(LinearLayout col) {
+        SteamLink st = new SteamLink(this);
+        android.content.SharedPreferences p = Settings.prefs(this);
+        boolean on = st.signedIn() && Settings.cloudSaves(this);
+        CheckBox cb = new CheckBox(this);
+        cb.setText(withNote("Sync with Steam Cloud", st.signedIn() ? "signed in as " + st.account() : "needs the Steam sign-in"));
+        cb.setChecked(on);
+        cb.setOnCheckedChangeListener((x, want) -> {
+            if (want && !new SteamLink(this).signedIn()) {
+                x.setChecked(false);
+                status.setText("Sign in to Steam first, then turn Steam Cloud saves on.");
+                steamSignIn();
+                return;
+            }
+            p.edit().putBoolean(Settings.CLOUD_SAVES, want).apply();
+            if (want) syncCloud(null);
+            else refresh();
+        });
+        col.addView(cb);
+        col.addView(note("Turns on the Cloud Data menu on the game's title screen, to upload and download your saves with Steam Cloud. "
+        + "An upload reaches Steam when you leave the game."));
+        if (on) {
+            String last = p.getString(Settings.CLOUD_LAST, null);
+            col.addView(text(last != null ? "Last sync " + last : "Not synced yet.", 13, DIM));
+            ViewGroup row = buttons();
+            row.addView(button("Sync now", v -> syncCloud(null)));
+            col.addView(row);
+        }
+    }
+
+    /** Set when Play synced with Steam Cloud. Tells onResume to sync again once the game has closed. */
+    private boolean cloudAfterGame;
+
+    /** True when the device has a network that Android has confirmed reaches the internet. */
+    private boolean online() {
+        android.net.ConnectivityManager cm = getSystemService(android.net.ConnectivityManager.class);
+        android.net.NetworkCapabilities c = cm == null ? null : cm.getNetworkCapabilities(cm.getActiveNetwork());
+        return c != null && c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                && c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+    }
+
+    /** True when Steam Cloud saves are turned on and the player is signed in to Steam. */
+    private boolean cloudSaves() { return Settings.cloudSaves(this) && new SteamLink(this).signedIn(); }
+
+    /** Syncs the Cloud menu's file with Steam Cloud on a thread. Sets the launcher to busy while syncing. */
+    private void syncCloud(Runnable then) {
+        if (busy) return;
+        // When offline cloud sync can cause the client to hang while the request times out, if offline we instead skip and show a status message.
+        if (!online()) {
+            String when = new java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.getDefault()).format(new java.util.Date());
+            Settings.prefs(this).edit().putString(Settings.CLOUD_LAST, when + ": not synced (offline)").apply();
+            refresh();
+            status.setText("Steam Cloud not synced: you're offline.");
+            if (then != null) then.run();
+            return;
+        }
+        busy = true;
+        // Only grey out Play here, as steamSync does. Rebuilding the page now (refresh) would remove the
+        // focused button, and the focus would land on a menu item, which opens its page.
+        playButton.setEnabled(false);
+        status.setText("Syncing your Cloud save with Steam...");
+        new Thread(() -> {
+            String m;
+            android.content.SharedPreferences p = Settings.prefs(this);
+            String when = new java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.getDefault()).format(new java.util.Date());
+            try {
+                SteamFiles.CloudResult r = new SteamFiles(new SteamLink(this)).syncCloud(SteamFiles.cloudDir(this));
+                m = "Steam Cloud: " + r;
+                p.edit().putString(Settings.CLOUD_LAST, when + ": " + r).apply();
+            } catch (Exception e) {
+                android.util.Log.w("FF9SteamFiles", "cloud sync", e);
+                m = "Steam Cloud not synced: " + SteamLink.message(e);
+                p.edit().putString(Settings.CLOUD_LAST, when + ": not synced (" + SteamLink.message(e) + ")").apply();
+            }
+            String mm = m;
+            runOnUiThread(() -> {
+                busy = false;
+                refresh();
+                status.setText(mm);
+                if (then != null) then.run();
+            });
+        }, "cloud-sync").start();
     }
 
     private void steamDownload() {

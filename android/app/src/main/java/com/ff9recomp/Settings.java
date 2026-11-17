@@ -66,6 +66,10 @@ final class Settings {
 
     static SharedPreferences prefs(Context c) { return c.getSharedPreferences("launcher", Context.MODE_PRIVATE); }
 
+    /** Steam Cloud saves on Game files > Saves. Whether syncing is on, and the result of the last sync shown there. */
+    static final String CLOUD_SAVES = "cloud_saves", CLOUD_LAST = "cloud_last";
+    static boolean cloudSaves(Context c) { return prefs(c).getBoolean(CLOUD_SAVES, false); }
+
     static int get(Context c, Option o) {
         SharedPreferences p = prefs(c);
         if (o.isBool()) return p.getBoolean(o.key, o.def != 0) ? 1 : 0;

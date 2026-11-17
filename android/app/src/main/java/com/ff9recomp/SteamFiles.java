@@ -34,6 +34,13 @@ import in.dragonbra.javasteam.steam.handlers.steamapps.SteamApps;
 import in.dragonbra.javasteam.steam.handlers.steamapps.callback.DepotKeyCallback;
 import in.dragonbra.javasteam.steam.handlers.steamapps.callback.PICSProductInfoCallback;
 import in.dragonbra.javasteam.steam.handlers.steamapps.callback.PICSTokensCallback;
+import in.dragonbra.javasteam.steam.handlers.steamcloud.AppFileChangeList;
+import in.dragonbra.javasteam.steam.handlers.steamcloud.AppFileInfo;
+import in.dragonbra.javasteam.steam.handlers.steamcloud.FileDownloadInfo;
+import in.dragonbra.javasteam.steam.handlers.steamcloud.FileUploadBlockDetails;
+import in.dragonbra.javasteam.steam.handlers.steamcloud.FileUploadInfo;
+import in.dragonbra.javasteam.steam.handlers.steamcloud.HttpHeaders;
+import in.dragonbra.javasteam.steam.handlers.steamcloud.SteamCloud;
 import in.dragonbra.javasteam.steam.handlers.steamcontent.SteamContent;
 import in.dragonbra.javasteam.types.ChunkData;
 import in.dragonbra.javasteam.types.DepotManifest;
@@ -262,6 +269,261 @@ final class SteamFiles {
         }
         if (dst.exists() && !dst.delete()) throw new IOException("cannot replace " + dst);
         if (!part.renameTo(dst)) throw new IOException("cannot write " + dst);
+    }
+
+    // ================================================================== Steam Cloud saves
+
+    /*
+     * FF9 has a built in Cloud data storage where it keeps a copy of the save files separate from the main game saves.
+     * Steam watches this folder for changes then uploads the modified files to Steam Cloud.
+     * FF9_CloudSaveFile_ww.sav (_jp for the Japanese game).
+     * The PC game writes it to <My Documents>\Square Enix\FINAL FANTASY IX.
+     * Here the engine points the game at cloudDir (Native/Compat.cs's FF9_CLOUD_DIR)
+     * syncCloud keeps that folder in step with Steam Cloud, before and after play.
+     * A file changed on one side only goes to the other. If it changed on both sides, the newer one is kept.
+     * On the first sync, Steam's copy is kept so the PC's Cloud save is never overwritten by surprise.
+     * Any copy about to be replaced is saved to steam/cloud-backup first.
+     * Other than FF9 unique process, a lot of this was lifted from the FF7 Recomp project.
+     */
+
+    /** Matches the Cloud menu's file names, in lower case. */
+    private static final java.util.regex.Pattern CLOUD_FILE = java.util.regex.Pattern.compile("ff9_cloudsavefile_(ww|jp)\\.sav");
+    /** The folder the files are in on Steam Cloud, after the My Documents root. */
+    private static final String CLOUD_FOLDER = "square enix/final fantasy ix/";
+    /** Steam Cloud's name for the My Documents root. Only used when uploading a file Steam doesn't have yet. */
+    private static final String CLOUD_ROOT = "%WinMyDocuments%";
+
+    /** The folder the game's Cloud menu reads and writes on Android. GameActivity passes it to the game as FF9_CLOUD_DIR. */
+    static File cloudDir(android.content.Context c) { return new File(new GameInstall(c).files, "steam/cloud"); }
+
+    /** The result of a sync, shown in the launcher. */
+    static final class CloudResult {
+        final List<String> up = new ArrayList<>(), down = new ArrayList<>(), conflicts = new ArrayList<>();
+        boolean changed() { return !up.isEmpty() || !down.isEmpty(); }
+        @Override public String toString() {
+            if (!changed()) return "your Cloud save and Steam's match.";
+            StringBuilder sb = new StringBuilder();
+            if (!down.isEmpty()) sb.append("Steam's Cloud save is here: use Download on the title screen to load it. ");
+            if (!up.isEmpty()) sb.append("Your Cloud save went to Steam. ");
+            if (!conflicts.isEmpty()) sb.append("It had changed on both sides; the ").append(down.isEmpty() ? "one here" : "one on Steam")
+                    .append(" was kept and the other is in steam/cloud-backup.");
+            return sb.toString().trim();
+        }
+    }
+
+    /** Syncs the Cloud menu's folder with FINAL FANTASY IX's Steam Cloud in both directions. */
+    CloudResult syncCloud(File dir) throws Exception {
+        File state = new File(link.dir, "cloud-sync.txt");
+        CloudResult r = new CloudResult();
+        try (SteamLink.Session s = link.open()) {
+            int app = SteamLink.APP_FF9;
+            if (!SteamLink.owns(s, app)) throw new IOException(NOT_OWNED);
+
+            // Collect Steam's copies by lower-case name, along with each file's full Steam Cloud name.
+            AppFileChangeList l = cloud(s).getAppFileListChange(app).get(60, TimeUnit.SECONDS);
+            Map<String, AppFileInfo> remote = new HashMap<>();
+            Map<String, String> remoteName = new HashMap<>();
+            for (AppFileInfo f : l.getFiles()) {
+                String prefix = f.getPathPrefixIndex() < l.getPathPrefixes().size() ? l.getPathPrefixes().get(f.getPathPrefixIndex()) : "";
+                String full = prefix + f.getFilename();
+                String low = full.replace('\\', '/').toLowerCase(Locale.ROOT);
+                String name = low.substring(low.lastIndexOf('/') + 1);
+                if (!CLOUD_FILE.matcher(name).matches() || !low.endsWith(CLOUD_FOLDER + name)) continue;
+                if (f.getPersistState() == in.dragonbra.javasteam.protobufs.steamclient.Enums.ECloudStoragePersistState.k_ECloudStoragePersistStateDeleted) continue;
+                remote.put(name, f);
+                remoteName.put(name, full);
+            }
+            Log.i(TAG, "cloud: " + remoteName.values() + " (" + l.getFiles().size() + " files in all)");
+
+            Map<String, String> synced = readState(state);
+            Map<String, File> local = new HashMap<>();
+            String[] here = dir.list();
+            if (here != null) for (String n : here) if (CLOUD_FILE.matcher(n.toLowerCase(Locale.ROOT)).matches()) local.put(n.toLowerCase(Locale.ROOT), new File(dir, n));
+            java.util.TreeSet<String> names = new java.util.TreeSet<>(remote.keySet());
+            names.addAll(local.keySet());
+
+            List<String> upload = new ArrayList<>();
+            for (String n : names) {
+                File f = local.get(n);
+                if (f == null) f = new File(dir, gameName(n));
+                String lsha = f.isFile() ? hex(sha1(f)) : null;
+                AppFileInfo rf = remote.get(n);
+                String rsha = rf != null ? hex(rf.getShaFile()) : null;
+                String was = synced.get(n);
+                if (lsha != null && lsha.equals(rsha)) { synced.put(n, lsha); continue; }
+                boolean localChanged = lsha != null && !lsha.equals(was), remoteChanged = rsha != null && !rsha.equals(was);
+                boolean takeRemote;
+                if (rsha == null) takeRemote = false;
+                else if (lsha == null) takeRemote = true;
+                else if (remoteChanged && !localChanged) takeRemote = true;
+                else if (localChanged && !remoteChanged) takeRemote = false;
+                else {                                    // Changed on both sides. Keep the newer one, or Steam's on the first sync.
+                    takeRemote = was == null || rf.getTimestamp().getTime() > f.lastModified();
+                    r.conflicts.add(n);
+                    if (!takeRemote) backup("steam-" + gameName(n), downloadCloud(s, app, remoteName.get(n)));
+                }
+                if (takeRemote) {
+                    byte[] b = downloadCloud(s, app, remoteName.get(n));
+                    if (!hex(sha1(b)).equals(rsha)) throw new IOException("Steam Cloud's " + gameName(n) + " did not match its checksum");
+                    if (f.isFile()) backup(f.getName(), java.nio.file.Files.readAllBytes(f.toPath()));
+                    dir.mkdirs();
+                    File tmp = new File(dir, f.getName() + ".part");
+                    java.nio.file.Files.write(tmp.toPath(), b);
+                    if (f.exists() && !f.delete()) throw new IOException("cannot replace " + f);
+                    if (!tmp.renameTo(f)) throw new IOException("cannot write " + f);
+                    f.setLastModified(rf.getTimestamp().getTime());
+                    synced.put(n, rsha);
+                    r.down.add(n);
+                } else {
+                    upload.add(n);
+                }
+            }
+
+            if (!upload.isEmpty()) {
+                List<String> full = new ArrayList<>();
+                for (String n : upload) full.add(remoteName.containsKey(n) ? remoteName.get(n) : CLOUD_ROOT + "Square Enix/FINAL FANTASY IX/" + gameName(n));
+                SteamCloud c = cloud(s);
+                long batch = c.beginAppUploadBatch(app, "FF9Recomp on " + android.os.Build.MODEL, full, Collections.emptyList(), clientId(), 0L)
+                        .get(60, TimeUnit.SECONDS).getBatchID();
+                EResult result = EResult.Fail;
+                try {
+                    for (int i = 0; i < upload.size(); i++) {
+                        String n = upload.get(i);
+                        File f = local.get(n);
+                        byte[] b = java.nio.file.Files.readAllBytes(f.toPath());
+                        byte[] sha = sha1(b);
+                        FileUploadInfo u = c.beginFileUpload(app, b.length, b.length, sha, new java.util.Date(f.lastModified()),
+                                full.get(i), -1, s.cell, false, false, null, batch, GlobalScope.INSTANCE).get(60, TimeUnit.SECONDS);
+                        boolean ok = true;
+                        for (FileUploadBlockDetails blk : u.getBlockRequests()) ok &= put(blk, b);
+                        if (!c.commitFileUpload(ok, app, sha, full.get(i)).get(60, TimeUnit.SECONDS) || !ok)
+                            throw new IOException("Steam Cloud did not take " + gameName(n));
+                        synced.put(n, hex(sha));
+                        r.up.add(n);
+                    }
+                    result = EResult.OK;
+                } finally {
+                    try { c.completeAppUploadBatch(app, batch, result).get(60, TimeUnit.SECONDS); } catch (Exception e) { Log.w(TAG, "complete batch", e); }
+                }
+            }
+            writeState(state, synced);
+        }
+        Log.i(TAG, "cloud sync: down " + r.down + ", up " + r.up + ", conflicts " + r.conflicts);
+        return r;
+    }
+
+    /** Lists FINAL FANTASY IX's Steam Cloud files, one per line. Used by the adb test API. */
+    String cloudListing() throws Exception {
+        StringBuilder sb = new StringBuilder();
+        try (SteamLink.Session s = link.open()) {
+            AppFileChangeList l = cloud(s).getAppFileListChange(SteamLink.APP_FF9).get(60, TimeUnit.SECONDS);
+            sb.append("change ").append(l.getCurrentChangeNumber()).append(" prefixes ").append(l.getPathPrefixes()).append('\n');
+            for (AppFileInfo f : l.getFiles())
+                sb.append(f.getPathPrefixIndex()).append(" | ").append(f.getFilename()).append(" | ").append(f.getRawFileSize())
+                  .append(" | ").append(f.getTimestamp()).append(" | ").append(f.getPersistState()).append(" | ").append(hex(f.getShaFile())).append('\n');
+        }
+        return sb.toString();
+    }
+
+    /** Turns a lower-case name back into the name the game uses, for example FF9_CloudSaveFile_ww.sav. */
+    private static String gameName(String low) { return "FF9_CloudSaveFile_" + low.substring("ff9_cloudsavefile_".length()); }
+
+    private static SteamCloud cloud(SteamLink.Session s) { return s.client.getHandler(SteamCloud.class); }
+
+    /** A random id for this device that stays the same between uploads. Steam asks for one with each upload. */
+    private long clientId() {
+        android.content.SharedPreferences p = link.prefs();
+        long id = p.getLong("cloud_client", 0);
+        if (id == 0) { id = new java.security.SecureRandom().nextLong() & Long.MAX_VALUE; p.edit().putLong("cloud_client", id).apply(); }
+        return id;
+    }
+
+    /** Downloads one Steam Cloud file. Unzips it if Steam stored it compressed. */
+    private static byte[] downloadCloud(SteamLink.Session s, int app, String name) throws Exception {
+        FileDownloadInfo d = cloud(s).clientFileDownload(app, name).get(60, TimeUnit.SECONDS);
+        if (d.getUrlHost() == null || d.getUrlHost().isEmpty()) throw new IOException("Steam gave no download address for " + name);
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL((d.getUseHttps() ? "https://" : "http://") + d.getUrlHost() + d.getUrlPath()).openConnection();
+        c.setConnectTimeout(30000);
+        c.setReadTimeout(60000);
+        for (HttpHeaders h : d.getRequestHeaders()) c.setRequestProperty(h.getName(), h.getValue());
+        int code = c.getResponseCode();
+        if (code != 200) throw new IOException("Steam Cloud answered HTTP " + code + " for " + name);
+        byte[] b;
+        try (InputStream in = c.getInputStream()) { b = readAll(in); }
+        if (d.getRawFileSize() != d.getFileSize() && b.length >= 4 && b[0] == 'P' && b[1] == 'K') {
+            try (java.util.zip.ZipInputStream z = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(b))) {
+                if (z.getNextEntry() != null) b = readAll(z);
+            }
+        }
+        return b;
+    }
+
+    /** Uploads one block of a file the way Steam asks for it. Returns true if the server accepted it. */
+    private static boolean put(FileUploadBlockDetails blk, byte[] data) throws IOException {
+        String[] methods = { "GET", "GET", "HEAD", "POST", "PUT", "DELETE" };
+        String method = blk.getHttpMethod() >= 0 && blk.getHttpMethod() < methods.length ? methods[blk.getHttpMethod()] : "PUT";
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL((blk.getUseHttps() ? "https://" : "http://") + blk.getUrlHost() + blk.getUrlPath()).openConnection();
+        c.setConnectTimeout(30000);
+        c.setReadTimeout(60000);
+        c.setRequestMethod(method);
+        for (HttpHeaders h : blk.getRequestHeaders()) c.setRequestProperty(h.getName(), h.getValue());
+        byte[] body = blk.getExplicitBodyData() != null && blk.getExplicitBodyData().length > 0 ? blk.getExplicitBodyData()
+                : Arrays.copyOfRange(data, (int) blk.getBlockOffset(), (int) blk.getBlockOffset() + blk.getBlockLength());
+        c.setDoOutput(true);
+        c.setFixedLengthStreamingMode(body.length);
+        try (java.io.OutputStream o = c.getOutputStream()) { o.write(body); }
+        int code = c.getResponseCode();
+        if (code < 200 || code >= 300) Log.w(TAG, "upload block: HTTP " + code);
+        return code >= 200 && code < 300;
+    }
+
+    /** Saves a copy about to be replaced to steam/cloud-backup, with the time in its name. */
+    private void backup(String name, byte[] b) throws IOException {
+        File d = new File(link.dir, "cloud-backup");
+        d.mkdirs();
+        String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(new java.util.Date());
+        java.nio.file.Files.write(new File(d, stamp + "-" + name).toPath(), b);
+    }
+
+    /** Reads each file's SHA-1 from the last time both sides matched. The file has one "name sha" line per file. */
+    private static Map<String, String> readState(File f) {
+        Map<String, String> m = new HashMap<>();
+        if (!f.isFile()) return m;
+        try {
+            for (String l : new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8).split("\n")) {
+                String[] p = l.trim().split(" ");
+                if (p.length == 2) m.put(p[0], p[1]);
+            }
+        } catch (IOException e) {
+            Log.w(TAG, "cloud state", e);
+        }
+        return m;
+    }
+
+    private static void writeState(File f, Map<String, String> m) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, String> e : new java.util.TreeMap<>(m).entrySet()) sb.append(e.getKey()).append(' ').append(e.getValue()).append('\n');
+        f.getParentFile().mkdirs();
+        java.nio.file.Files.write(f.toPath(), sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private static byte[] readAll(InputStream in) throws IOException {
+        java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[1 << 16];
+        for (int n; (n = in.read(buf)) > 0; ) o.write(buf, 0, n);
+        return o.toByteArray();
+    }
+
+    private static byte[] sha1(byte[] b) {
+        try { return MessageDigest.getInstance("SHA-1").digest(b); }
+        catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
+    }
+
+    private static String hex(byte[] b) {
+        if (b == null) return null;
+        StringBuilder sb = new StringBuilder();
+        for (byte x : b) sb.append(String.format(Locale.ROOT, "%02x", x));
+        return sb.toString();
     }
 
     static KeyValue appInfo(SteamLink.Session s, int app) throws Exception {

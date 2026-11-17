@@ -564,6 +564,17 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
                 Os.setenv("FF9_WORLDMAP_DIR", new File(gi.files, "worldmap").getPath(), true);   // the panels' world map (Core/Companion.cs)
                 Os.setenv("FF9_UI_SOUNDS", Sfx.dir(this).getPath(), true);   // the launcher's menu sounds (Core/UiSounds.cs)
                 Os.setenv("FF9_ACHIEVEMENTS", Achievements.file(this).getPath(), true);   // src/host/win32.c     // the game's state for the panels and save-state names
+                // Steam Cloud saves. Turns on the title screen's Cloud menu (src/host/win32.c) and tells the engine which folder it should use (Native/Compat.cs).
+                // The launcher syncs that folder with Steam.
+                if (Settings.cloudSaves(this) && new SteamLink(this).signedIn()) {
+                    File cloud = SteamFiles.cloudDir(this);
+                    cloud.mkdirs();
+                    Os.setenv("FF9_CLOUD_ENABLED", "1", true);
+                    Os.setenv("FF9_CLOUD_DIR", cloud.getPath(), true);
+                } else {     // Clear them, in case this process ran the game earlier with them set.
+                    Os.unsetenv("FF9_CLOUD_ENABLED");
+                    Os.unsetenv("FF9_CLOUD_DIR");
+                }
                 // resume a save state, or Settings > Start: Continue (Memoria loads its autosave at once)
                 boolean autoload = getIntent().getBooleanExtra("autoload", false)
                         || getSharedPreferences("launcher", MODE_PRIVATE).getInt("start", 0) == 1;

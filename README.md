@@ -135,6 +135,21 @@ added by hand on the PC are listed too.
 The game unlocks achievements as it does on PC, and FF9Recomp sends them to your Steam account
 (the FINAL FANTASY IX you own on Steam), straight away when online, otherwise the next time.
 
+## Steam Cloud saves
+
+**Game files** → **Saves** → **Sync with Steam Cloud** uses the same Steam sign-in as achievements.
+With it on, the **Cloud Data** menu on the game's title screen works as it does on the PC:
+- **Upload** puts all your saves in FINAL FANTASY IX's Steam Cloud.
+- **Download** replaces the saves on the device with the ones there.
+
+Nothing goes to Steam on its own: your saves only reach Steam Cloud when you choose Upload, as on
+the PC. The launcher syncs with Steam before you play and after you leave the game, so an Upload
+reaches Steam once the game has closed, and an upload made on the PC is there the next time you
+press Play. **Sync now** syncs straight away. If the Cloud save changed on both sides, the newer
+one is kept. Any copy about to be replaced is first saved to
+`Android/data/com.ff9recomp/files/steam/cloud-backup`. Offline, the game starts as usual and the
+next sync catches up.
+
 ## Reporting problems
 
 **Report a problem** in the launcher makes one zip with everything needed to look into a
@@ -154,6 +169,8 @@ then open an issue here with what happened.
 - The battle results screen is clipped at the left in widescreen.
 - Download from Steam and Steam achievements have not been tested with a Steam copy of the game
   yet. Importing a GOG copy works.
+- Steam Cloud saves were tested both ways with the PC version's Cloud save. A first Upload to an
+  account with no Cloud save yet, and the Japanese game's Cloud file, have not been tested.
 - Movies decode on the CPU, on several cores. The 2K video pack plays at full speed on the Thor;
   the 4K pack has not been timed.
 - The 120 FPS mode is experimental and runs warmer.

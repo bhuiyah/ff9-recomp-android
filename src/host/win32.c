@@ -81,6 +81,8 @@ static steam_void_cb steam_achievement_stored;
 static int steam_pending_received, steam_pending_stored, steam_pending_achievement;
 
 static const char *achievements_file(void) { return getenv("FF9_ACHIEVEMENTS"); }
+static const char *cloud_enabled_file(void) { return getenv("FF9_CLOUD_ENABLED"); }
+static const int cloud_enabled(void) { return (cloud_enabled_file() != NULL) ? atoi(cloud_enabled_file()) : 0; }
 
 EXPORT BOOL Init(void) { return achievements_file() != NULL; }
 EXPORT void Shutdown_Internal(void) {}
@@ -110,7 +112,7 @@ EXPORT BOOL TriggerAchievement_Internal(const char *id) {
 }
 EXPORT BOOL UpdateStatProgress_Internal(const char *id, int p) { steam_pending_stored = 1; return achievements_file() != NULL; }
 EXPORT BOOL ClearAchievement_Internal(const char *id) { return achievements_file() != NULL; }
-EXPORT BOOL IsCloudEnabled_Internal(void) { return 0; }
+EXPORT BOOL IsCloudEnabled_Internal(void) { return cloud_enabled(); }
 EXPORT void RegisterStatsReceivedCallback(void *cb) { steam_stats_received = (steam_result_cb)cb; }
 EXPORT void RegisterStatsStoredCallback(void *cb) { steam_stats_stored = (steam_result_cb)cb; }
 EXPORT void RegisterAchievementStoredCallback(void *cb) { steam_achievement_stored = (steam_void_cb)cb; }

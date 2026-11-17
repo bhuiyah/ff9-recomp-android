@@ -114,6 +114,23 @@ public class TestControl extends BroadcastReceiver {
                 out.put("screen", size);
                 break;
             }
+            case "STEAM_CLOUD": {
+                // --es op list|sync.
+                // "list" lists FINAL FANTASY IX's Steam Cloud files.
+                // "sync" runs the same sync as Game files > Saves.
+                String op = intent.getStringExtra("op") != null ? intent.getStringExtra("op") : "list";
+                if (!op.equals("list") && !op.equals("sync")) { out.put("error", "op list|sync"); break; }
+                new Thread(() -> {
+                    try {
+                        SteamFiles sf = new SteamFiles(new SteamLink(ctx));
+                        String r = op.equals("list") ? sf.cloudListing() : String.valueOf(sf.syncCloud(SteamFiles.cloudDir(ctx)));
+                        for (String line : r.split("\n")) android.util.Log.i("FF9SteamFiles", "cloud " + op + ": " + line);
+                        android.util.Log.i("FF9SteamFiles", "cloud " + op + " done");
+                    } catch (Throwable e) { android.util.Log.e("FF9SteamFiles", "cloud " + op + " failed", e); }
+                }, "test-cloud").start();
+                out.put("cloud", op);
+                break;
+            }
             case "STEAM_DOWNLOAD": {
                 // tests download into a scratch folder only, never the player's game:
                 // --es op download|memoria|pause|continue|status|queue_pause|queue_continue --es dir ABS

@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Updates from the GitHub releases (Updater.java), the mod catalog and achievements -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- the game back in front on the top screen after Pixel Guide opens on the bottom one -->
@@ -61,6 +62,7 @@
                 <action android:name="com.ff9recomp.test.STOP" />
                 <action android:name="com.ff9recomp.test.REPORT" />
                 <action android:name="com.ff9recomp.test.STEAM_DOWNLOAD" />
+                <action android:name="com.ff9recomp.test.STEAM_CLOUD" />
                 <action android:name="com.ff9recomp.test.SCREEN" />
             </intent-filter>
         </receiver>

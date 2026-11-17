@@ -395,3 +395,17 @@ have it); our data's naming screen is unchanged.
 - 68 changes after: ~70 textures, ~2000 meshes, RSS flat at ~1.25 GB (1.7 GB and climbing at 48
   before). "Error Env Play()" boxes in that test come from warping out of the story's order (shown
   with the unloader off too).
+
+## Imported copy without Memoria's game code (0.1.15, issue 20 again)
+
+- 0.1.13's Backend = 2 didn't help the tester: their Assembly-CSharp.dll is the plain game's (its
+  log has the plain game's "40 BundleScene.Awake" line, there is no Memoria.log, and SoundLib
+  still chose SdLibAPIWithProLicense), with a Memoria.Prime.dll left beside it (a PC copy whose
+  game files Steam put back), so the import's check passed.
+- GameInstall.memoriaPatched(): Memoria's Assembly-CSharp.dll has "SdLibAPIWithSoloud", the plain
+  game's doesn't (cached by size and time). Without it the copy isn't ready, the status says
+  "Memoria missing", and Game files has Install Memoria: JobService.MEMORIA fetches Memoria's
+  installer (as the Steam download does) and installs it into the copy, keeping Memoria.ini's
+  settings, then configureMemoria.
+- Thor: the plain DLL put in place showed the message and button; Install Memoria (1411 files)
+  gave back the same Assembly-CSharp.dll byte for byte, and the title took input.

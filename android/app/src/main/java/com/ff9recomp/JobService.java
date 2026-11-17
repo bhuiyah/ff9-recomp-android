@@ -34,6 +34,7 @@ public class JobService extends Service {
     static final String STEAM = "steam", IMPORT = "import", TO_SD = "to_sd", TO_INTERNAL = "to_internal";
     /** adb tests only (TestControl): Memoria's download, the Steam download's first step, without Steam. */
     static final String TEST_MEMORIA = "test_memoria";
+    static final String MEMORIA = "memoria";        // Install Memoria into an imported copy without it
     static final String ACTION_PAUSE = "com.ff9recomp.job.PAUSE", ACTION_CONTINUE = "com.ff9recomp.job.CONTINUE";
     /** job_ran: the pending job has run before (a continued import skips the files copied whole; a new one copies all). */
     private static final String KIND = "job_kind", ARG = "job_arg", RAN = "job_ran";
@@ -71,6 +72,7 @@ public class JobService extends Service {
             case STEAM: return "Downloading FINAL FANTASY IX from Steam";
             case IMPORT: return "Importing FINAL FANTASY IX";
             case TEST_MEMORIA: return "Downloading Memoria (test)";
+            case MEMORIA: return "Installing Memoria";
             case TO_SD: return "Moving your files to the SD card";
             default: return "Moving your files to internal storage";
         }
@@ -213,6 +215,15 @@ public class JobService extends Service {
                 try { new MemoriaInstall(gi).fetch(w -> status = w, pause); }
                 catch (InterruptedException e) { throw new Paused(); }
                 return "Memoria " + MemoriaInstall.VERSION + " is downloaded.";
+            case MEMORIA: {
+                MemoriaInstall mi = new MemoriaInstall(gi);
+                try { mi.fetch(w -> status = w, pause); }
+                catch (InterruptedException e) { throw new Paused(); }
+                status = "Installing Memoria " + MemoriaInstall.VERSION;
+                mi.install(gi.game, w -> status = w);
+                gi.configureMemoria();
+                return "Memoria " + MemoriaInstall.VERSION + " is installed. Press Play.";
+            }
             case IMPORT:
                 gi.importFrom(Uri.parse(arg), w -> status = w, ranBefore);
                 return "Your FINAL FANTASY IX is ready" + (gi.hasMoguri() ? ", with Moguri Mod." : ".") + " Press Play (or Start).";

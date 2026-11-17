@@ -297,7 +297,7 @@ public class LauncherActivity extends Activity {
     }
 
     private void updateStatus() {
-        String game = !install.hasGame() ? "not imported" : install.missingMessage() != null ? "files missing" : "ready";
+        String game = !install.hasGame() ? "not imported" : install.needsMemoria() ? "Memoria missing" : install.missingMessage() != null ? "files missing" : "ready";
         int on = ModCatalog.enabled(this).size();
         StringBuilder s = new StringBuilder("Game: " + game + "   ·   Mods: " + on + " on   ·   Frame rate: " + Settings.valueText(this, Settings.find("fps")));
         Updater.Release up = Updater.available;
@@ -1355,7 +1355,11 @@ public class LauncherActivity extends Activity {
         col.addView(note("Pick your FINAL FANTASY IX folder (the Steam copy, with Memoria installed; Moguri Mod if you use it). It is copied into the app once; nothing from the game ships in the app."));
         ViewGroup actions = buttons();
         actions.addView(button(has ? "Import again" : "Import game folder", v -> pickGame()));
+        if (has && install.needsMemoria()) actions.addView(button("Install Memoria", v -> installMemoria()));
         col.addView(actions);
+        if (has && install.needsMemoria())
+            col.addView(note("Install Memoria downloads Memoria " + MemoriaInstall.VERSION + " from its GitHub page (about 90 MB) and installs it into this copy, "
+                    + "as its installer does on the PC. Your saves, mods and Memoria settings stay."));
 
         TextView hd = heading("Download from Steam");
         hd.setPadding(0, dp(14), 0, dp(4));
@@ -1553,6 +1557,11 @@ public class LauncherActivity extends Activity {
         if (page.equals("game")) refresh();
         status.setText(JobService.status);
         if (JobService.pending(this) == null && page.equals("game")) message("Game files", JobService.status);
+    }
+
+    private void installMemoria() {
+        if (TestControl.gamePid(this) > 0) { status.setText("Leave the game first."); return; }
+        startJob(JobService.MEMORIA, null);
     }
 
     private void startJob(String kind, String arg) {

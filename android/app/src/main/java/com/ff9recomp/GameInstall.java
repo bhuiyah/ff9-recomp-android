@@ -59,10 +59,44 @@ final class GameInstall {
     String missingMessage() {
         List<String> m = new ArrayList<>();
         for (String r : REQUIRED) { File f = new File(game, r); if (!f.isFile() || f.length() == 0) m.add(r); }
+        if (m.contains("x64/FF9_Data/Managed/Memoria.Prime.dll") || m.isEmpty() && !memoriaPatched())
+            return "Memoria isn't installed in this copy of the game" + (m.isEmpty() ? " (its game code is the plain game's)" : "")
+                    + ". Install Memoria below, or install it on the PC and import the folder again.";
         if (m.isEmpty()) return null;
-        if (m.contains("x64/FF9_Data/Managed/Memoria.Prime.dll"))
-            return "Memoria isn't installed in the imported copy. Install Memoria on the PC (and Moguri Mod if you want it), then import the folder again.";
         return "Files missing from the imported copy: " + String.join(", ", m);
+    }
+
+    /** Whether Memoria is missing (so Install Memoria can fix the copy). */
+    boolean needsMemoria() {
+        File prime = new File(game, "x64/FF9_Data/Managed/Memoria.Prime.dll");
+        return hasGame() && (!prime.isFile() || !memoriaPatched());
+    }
+
+    private static String patchedKey;
+    private static boolean patchedValue;
+
+    /**
+     * Memoria's game code: its Assembly-CSharp.dll has the SoLoud sound system, the plain game's
+     * doesn't. A PC copy can keep Memoria.Prime.dll with the plain game's Assembly-CSharp.dll (a
+     * Steam file check puts the original back): the game then started with the PC's sound system,
+     * which failed, and its title screen never took input (GitHub issue 20).
+     */
+    boolean memoriaPatched() {
+        File a = new File(game, "x64/FF9_Data/Managed/Assembly-CSharp.dll");
+        if (!a.isFile()) return false;
+        String key = a.getPath() + ":" + a.length() + ":" + a.lastModified();
+        synchronized (GameInstall.class) {
+            if (key.equals(patchedKey)) return patchedValue;
+        }
+        boolean found;
+        try {
+            // ASCII is one byte a character in ISO-8859-1: a plain text search over the file
+            found = new String(Files.readAllBytes(a.toPath()), StandardCharsets.ISO_8859_1).contains("SdLibAPIWithSoloud");
+        } catch (IOException | OutOfMemoryError e) {
+            return true;        // unreadable here: let the game say
+        }
+        synchronized (GameInstall.class) { patchedKey = key; patchedValue = found; }
+        return found;
     }
 
     // ---------------------------------------------------------------- import from a folder

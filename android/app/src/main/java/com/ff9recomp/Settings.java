@@ -111,6 +111,10 @@ final class Settings {
         put(lines, "AnalogControl", "Enabled", on(c, "analog_run"));
         put(lines, "Audio", "MusicVolume", String.valueOf(get(c, find("music_volume")) * 25));
         put(lines, "Audio", "SoundVolume", String.valueOf(get(c, find("sound_volume")) * 25));
+        // SoLoud, the only sound system on Android. A Memoria.ini without a Backend line (GitHub
+        // issue 20) left Memoria on the PC's SdLib: SoundLib.Awake failed, and the title screen's
+        // setup with it, so its menu never took input.
+        put(lines, "Audio", "Backend", "2");
         writeIni(ini, lines);
     }
 

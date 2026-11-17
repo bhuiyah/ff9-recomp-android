@@ -364,3 +364,14 @@ recovery finds the object but no UIInput), the field stayed empty and no keyboar
 loads a missing "...PSVitaExtension" script class as its base class (UIInput first in its fields),
 and SceneLoader gives a UIInput with no label its child UILabel. Not tested on that data (we don't
 have it); our data's naming screen is unchanged.
+
+## Sound backend missing from Memoria.ini (0.1.13, issue 20)
+
+- A Memoria.ini with no `[Audio] Backend` line (a short one, from a PC install that only kept
+  changed values) left Memoria on its default backend: SdLib (0) in older Memoria, SaXAudio (1) in
+  v2026.11.09, neither of which exists on Android. `SoundLib.Awake` threw (EntryPointNotFound),
+  `UIManager.OnLevelWasLoaded` then threw at each scene, and the title screen drew with no hand
+  cursor and took no input. `GameInstall.configureMemoria` only rewrote an existing `Backend` line.
+- `Settings.apply` (every Play) now writes `Backend = 2` (SoLoud) into [Audio], adding it if absent.
+- Reproduced on the Thor by deleting the line; with the fix the line comes back on Play and the
+  title menu works.

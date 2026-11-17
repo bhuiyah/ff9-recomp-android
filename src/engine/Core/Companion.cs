@@ -174,7 +174,9 @@ public static class Companion {
     static void ExportSprite(string atlasName, string sprite) {
         string outPath = System.IO.Path.Combine(mapDir!, "ui_" + atlasName + "_" + sprite + ".png");
         if (System.IO.File.Exists(outPath)) return;
-        var atlas = Get(T("Assets.Sources.Scripts.UI.Common.FF9UIDataTool"), atlasName + "Atlas");
+        // FF9_TEST_FACE_FALLBACK=1: the older Memorias' way, on a newer one
+        var atlas = (atlasName == "Face" && faceFallbackTest ? null : Get(T("Assets.Sources.Scripts.UI.Common.FF9UIDataTool"), atlasName + "Atlas"))
+            ?? (atlasName == "Face" ? StatusFaceAtlas() : null);
         var sd = CallOn(atlas, "GetSprite", sprite);
         if (sd == null) { Log.Once("uisprite" + atlasName + sprite, $"ui sprite {atlasName}/{sprite}: not in the atlas"); return; }
         var tex = (Get(sd, "texture") ?? Get(atlas, "texture")) as UnityEngine.Texture;
@@ -198,6 +200,21 @@ public static class Companion {
         for (int r = 0; r < h; r++) Buffer.BlockCopy(pix, ((bottom + r) * nt.Width + sx) * 4, px, r * w * 4, w * 4);
         System.IO.Directory.CreateDirectory(mapDir!);
         Gfx.Png.Write(outPath, px, w, h, flipY: true);
+    }
+
+    /// Memorias before late 2024 have no FF9UIDataTool.FaceAtlas (GitHub issue 32: no portraits on
+    /// the panels): the atlas of the status screen's portrait, which is where the newer getter
+    /// takes it from too.
+    static readonly bool faceFallbackTest = Environment.GetEnvironmentVariable("FF9_TEST_FACE_FALLBACK") == "1";
+
+    static object? StatusFaceAtlas() {
+        var ui = Get(typeof(PersistenSingleton<>).MakeGenericType(T("UIManager")!), "Instance");
+        var panel = Get(Get(ui, "StatusScene"), "CharacterDetailPanel") as UnityEngine.GameObject;
+        if (panel == null || panel.transform.childCount == 0) return null;
+        var first = panel.transform.GetChild(0);
+        if (first.childCount == 0) return null;
+        var sprite = first.GetChild(0).gameObject.GetComponent(T("UISprite")!);
+        return Get(sprite, "atlas");
     }
 
     static void Str(StringBuilder b, string s) {

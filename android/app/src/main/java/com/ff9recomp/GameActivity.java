@@ -117,9 +117,22 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         if (ds.length == 0) { Log.i(TAG, "no second display"); return; }
         android.view.Display d = ds[0];
         android.view.Display mine = getDisplay();
+        panelsFor = mine != null ? mine.getDisplayId() : -1;
+        // which screens there are and where the game went (Report a problem has display.txt):
+        // the Ayaneo Pocket DS doesn't always put the game where it was asked (GitHub issue 31)
+        StringBuilder s = new StringBuilder("screens:");
+        for (android.view.Display x : dm.getDisplays()) {
+            android.graphics.Point p = new android.graphics.Point();
+            x.getRealSize(p);
+            s.append(' ').append(x.getDisplayId()).append(" \"").append(x.getName()).append("\" ")
+             .append(p.x).append('x').append(p.y).append(" flags ").append(x.getFlags());
+        }
+        s.append("; second screen ").append(d.getDisplayId()).append("; game on ").append(panelsFor)
+         .append("; swap screens ").append(getSharedPreferences("launcher", MODE_PRIVATE).getBoolean("swap_screens", false) ? "on" : "off");
+        displayLog(s.toString());
         if (mine != null && mine.getDisplayId() != android.view.Display.DEFAULT_DISPLAY) {
             // swapped: the game is on the second display, the panels go to the main one
-            Log.i(TAG, "screens swapped: panels on the main display");
+            displayLog("screens swapped: panels on the main display");
             try {
                 android.app.ActivityOptions o = android.app.ActivityOptions.makeBasic();
                 o.setLaunchDisplayId(android.view.Display.DEFAULT_DISPLAY);
@@ -130,7 +143,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
             } catch (RuntimeException e) { Log.w(TAG, "panels not shown on the main display: " + e); }
             return;
         }
-        Log.i(TAG, "panels on display " + d.getDisplayId() + " \"" + d.getName() + "\"");
+        if (mine != null && mine.getDisplayId() == d.getDisplayId()) { displayLog("the game is on the second screen itself: no panels"); return; }
+        displayLog("panels on display " + d.getDisplayId() + " \"" + d.getName() + "\"");
         companion = new android.app.Presentation(this, d) {
             @Override public boolean dispatchKeyEvent(KeyEvent e) { return GameActivity.this.dispatchKeyEvent(e); }
             @Override public boolean dispatchGenericMotionEvent(MotionEvent e) { return GameActivity.this.dispatchGenericMotionEvent(e); }
@@ -483,6 +497,30 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     // the activity but stays on its display when the activity is stopped, so the bottom screen
     // kept showing them over Android's home screen (GitHub issue 16).
     private boolean panelsHidden, guideTabHidden, hostSentBack;
+
+    // ---- the game moved to the other screen after the panels were placed (the Ayaneo Pocket DS
+    // can move it after it starts; FF7Recomp's GitHub #49 saw the panels left covering the game):
+    // the panels go to the screen the game is not on.
+    private int panelsFor = -1;
+
+    @Override
+    public void onConfigurationChanged(android.content.res.Configuration c) {
+        super.onConfigurationChanged(c);
+        ui.post(this::followGameDisplay);
+    }
+
+    private void followGameDisplay() {
+        if (panelsFor < 0 || isFinishing()) return;
+        android.view.Display mine = getDisplay();
+        if (mine == null || mine.getDisplayId() == panelsFor) return;
+        displayLog("game moved from display " + panelsFor + " to " + mine.getDisplayId() + ": panels placed again");
+        if (companion != null) { companion.dismiss(); companion = null; }
+        if (guideTab != null) { guideTab.dismiss(); guideTab = null; }
+        if (companionHost != null) { Activity h = companionHost; companionHost = null; h.finish(); }
+        companionOn = false;
+        panelsFor = -1;
+        showCompanion();
+    }
 
     @Override
     protected void onStop() {

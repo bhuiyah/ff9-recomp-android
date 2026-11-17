@@ -639,8 +639,8 @@ public class LauncherActivity extends Activity {
         boolean enabled = on.stream().anyMatch(folder::equalsIgnoreCase);
         int pos = -1;
         for (int i = 0; i < on.size(); i++) if (on.get(i).equalsIgnoreCase(folder)) pos = i;
-        LinearLayout r = row();
-        r.setGravity(Gravity.CENTER_VERTICAL);
+        // the buttons wrap onto a second line if even their own line is too narrow
+        ViewGroup r = new FlowRow(this);
         CheckBox cb = new CheckBox(this);
         String name = shown.name;
         String ver = m == null ? "added by hand" : ModCatalog.installedVersion(this, m).isEmpty() ? "" : "v" + ModCatalog.installedVersion(this, m);
@@ -654,7 +654,6 @@ public class LauncherActivity extends Activity {
             try { ModCatalog.setEnabled(this, folder, isOn); } catch (Exception e) { message("Could not change Memoria.ini", e.getMessage()); }
             refresh();
         });
-        r.addView(cb, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         if (enabled) {
             Button up = small("▲", v -> { moveMod(folder, -1); });
             up.setTag("focus:up:" + folder);
@@ -673,7 +672,11 @@ public class LauncherActivity extends Activity {
         Button rm = small("Remove", v -> confirmRemove(folder, m));
         rm.setTag("focus:rm:" + folder);
         r.addView(rm);
-        return r;
+        // the name, then its buttons beside it; under it when they would leave the name too
+        // little width (a 1240x1080 screen gave it a few letters per line, GitHub issue 30)
+        View line = new NameAndButtons(this, cb, r, dp(200), dp(8));
+        line.setTag("modrow:" + folder);
+        return line;
     }
 
     private void moveMod(String folder, int dir) {

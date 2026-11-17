@@ -515,3 +515,27 @@ The swirl stayed black. Three things, all needed:
     the frame nearest the target now (half a frame ahead), not the last one before it.
 - Not answered here: issue 29 (a second Blank after Steiner's attack) with AlternateFantasy and
   BlackCat active.
+
+## Portraits with older Memorias, mod rows on 1240x1080, panels follow the game (0.1.23, issues 32, 30, 31)
+
+- Issue 32, letters instead of portraits on the panels. The reporter's game has Memoria
+  2024-08-24 (Memoria.log), which has no FF9UIDataTool.FaceAtlas (added later; it returns the
+  status screen portrait's atlas: StatusScene.CharacterDetailPanel child 0, child 0, UISprite).
+  Companion.ExportSprite got null and logged "ui sprite Face/faceNN: not in the atlas".
+  Companion.StatusFaceAtlas reads that sprite's atlas itself when the property isn't there.
+  FF9_TEST_FACE_FALLBACK=1 takes that path on a newer Memoria: on the Thor the exported
+  ui_Face_face00/01.png were byte-identical to the ones from FaceAtlas.
+  The same report's black bars in the Ice Cavern garden (map 306) are Memoria's: NarrowMapList
+  gives that field 320 pixels, so it stays 4:3 on PC too. Its Memoria also skips the 0.1.22
+  movie clock ("this Memoria's MovieMaterial differs").
+- Issue 30, Mods page on a Retroid Pocket Classic (1240x1080, 320 dpi): the name had a few
+  pixels beside the buttons. NameAndButtons (from FF7Recomp's #58) puts the buttons under the
+  name when they'd leave it under 200 dp; the buttons are a FlowRow. Checked with test.SCREEN
+  1240x1080@320 and at the Thor's own width (unchanged).
+- Issue 31, Ayaneo Pocket DS: the game stays on the small (main) screen with Swap screens on.
+  Not reproduced: on the Thor the game goes to the second display. FF7Recomp's #49 showed the
+  Pocket DS moving the game between screens after it starts. GameActivity now writes the screens
+  (id, name, size, flags), the game's display and the swap setting to display.txt, and places
+  the panels again when the game is on another display than they were placed for
+  (onConfigurationChanged; on the Thor a move recreates the activity, which places them anew).
+  Thor: am display move-stack of the game's task to 0 and back: panels followed, game kept going.

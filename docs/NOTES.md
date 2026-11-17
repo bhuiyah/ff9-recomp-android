@@ -463,3 +463,14 @@ The swirl stayed black. Three things, all needed:
 - FF9_TRACE_FX=1 logs brightness of the camera picture, the Rush textures, the capture, the
   screen after each stage, the cameras, the fader's colours; FF9_TRACE_FX=shots writes the final
   screen of each image-effect frame to files/fx_N.png.
+
+## Battle effects gone in 0.1.19 (0.1.20, issue 25)
+
+- The battle camera has BattleMapCameraController, whose OnRenderImage is PSXTextureMgr.PostBlur
+  (a Blit of the picture, keeping a copy for blur effects). Since 0.1.19 ran OnRenderImage, that
+  camera drew into a temporary texture, but its OnPostRender (SFX.PostRender -> SFXRender.Render)
+  starts with RenderTexture.active = null and drew the effects straight to the screen, which the
+  Blit then covered. Unity's null target during such a camera is the camera's own (CameraTarget):
+  RenderTargets.CameraTarget now stands in for null while a camera with image effects draws.
+- Checked on the Thor with -memoria-battle 336 -memoria-seed 1 (which now gets to the battle: it
+  goes through the swirl, which used to stall at the title): Blank's attack shows its hit flash.

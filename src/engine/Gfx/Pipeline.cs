@@ -612,8 +612,9 @@ public static class Pipeline {
             int w = camTarget != null ? Textures.Of(camTarget).Width : Device.Width, h = camTarget != null ? Textures.Of(camTarget).Height : Device.Height;
             var src = TextureIcalls.Temporary(w, h, 24);
             cam.Target = src;
+            RenderTargets.CameraTarget = Textures.Of(src) as NRenderTexture;
             try { RenderCameraOnce(cam, replacement, replacementTag); }
-            finally { cam.Target = camTarget; }
+            finally { cam.Target = camTarget; RenderTargets.CameraTarget = null; }
             var temps = new List<RenderTexture> { src };
             for (int i = 0; i < fx.Count; i++) {
                 RenderTexture? dest = i == fx.Count - 1 ? camTarget : TextureIcalls.Temporary(w, h, 0);

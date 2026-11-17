@@ -489,8 +489,14 @@ public sealed class NRenderTexture : NTexture {
 public static class RenderTargets {
     public static NRenderTexture? Active;
     public static uint CurrentFbo => Active?.Fbo ?? 0;
+    /// While a camera with image effects draws (Pipeline.RenderCamera), "the screen" is its
+    /// temporary texture, as Unity's CameraTarget: the battle effects (SFXRender sets
+    /// RenderTexture.active = null in OnPostRender) went to the screen and the camera's
+    /// OnRenderImage blit then covered them (GitHub issue 25).
+    public static NRenderTexture? CameraTarget;
 
     public static void Set(NRenderTexture? rt) {
+        rt ??= CameraTarget;
         Active = rt;
         if (!Device.Ready) return;
         if (rt != null) rt.Create();

@@ -62,6 +62,7 @@ public static class Player {
     public static int Main(string[] args) {
         Native.DllImports.Install();
         Native.Compat.Install();
+        Native.Compat.TestThreadStart();
         Native.HarmonyCompat.Watch();
         // FF9_TRACE_EXCEPTIONS=1 (files/env.txt): every exception as it is thrown, caught or not
         // (the game's save code catches its own and only reports a failure)

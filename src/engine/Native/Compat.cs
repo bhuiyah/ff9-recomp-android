@@ -23,7 +23,61 @@ public static class Compat {
 
     public static void Install() {
         Detour(typeof(Assembly).GetMethod(nameof(Assembly.LoadFile), new[] { typeof(string) })!, M(nameof(LoadFile)));
+        InstallThreadStart();
         InstallCloudFolder();
+    }
+
+    // Thread.Start(object) on a thread made with a plain ThreadStart: .NET Framework (Unity's
+    // Mono) ignored the argument, .NET 8 throws. Memoria's VoicePlayer.StartSound starts its
+    // voice watcher that way, so no voice line played and, with AutoDismissDialogAfterCompletion,
+    // each dialog closed at once and the next came over it (GitHub issues 22, 23, 26: KupoMail).
+    // Thread.Start(object, bool, bool) is replaced by the same steps without that check.
+    static FieldInfo? startHelper, startArg, startContext;
+    static MethodInfo? startCore, throwIfNoStart;
+
+    static void InstallThreadStart() {
+        const BindingFlags I = BindingFlags.Instance | BindingFlags.NonPublic, S = BindingFlags.Static | BindingFlags.NonPublic;
+        var t = typeof(System.Threading.Thread);
+        var target = t.GetMethod("Start", I, null, new[] { typeof(object), typeof(bool), typeof(bool) }, null);
+        startHelper = t.GetField("_startHelper", I);
+        var helperType = startHelper?.FieldType;
+        startArg = helperType?.GetField("_startArg", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        startContext = helperType?.GetField("_executionContext", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        startCore = t.GetMethod("StartCore", I);
+        throwIfNoStart = t.GetMethod("ThrowIfNoThreadStart", S);
+        if (target == null || startHelper == null || startArg == null || startContext == null || startCore == null) {
+            Log.Warn("Thread.Start(object): this runtime's Thread differs; not replaced");
+            return;
+        }
+        Detour(target, M(nameof(ThreadStartWithArg)));
+    }
+
+    static void ThreadStartWithArg(System.Threading.Thread self, object? parameter, bool captureContext, bool internalThread) {
+        try { throwIfNoStart?.Invoke(null, new object[] { internalThread }); }
+        catch (TargetInvocationException e) when (e.InnerException != null) { throw e.InnerException; }
+        object? helper = startHelper!.GetValue(self);
+        if (helper != null) {
+            startArg!.SetValue(helper, parameter);      // used by a ParameterizedThreadStart, ignored by a ThreadStart
+            startContext!.SetValue(helper, captureContext ? System.Threading.ExecutionContext.Capture() : null);
+        }
+        try { startCore!.Invoke(self, null); }
+        catch (TargetInvocationException e) when (e.InnerException != null) { throw e.InnerException; }
+    }
+
+    /// FF9_TEST_THREADSTART=1: a plain ThreadStart started with an argument, as VoicePlayer does.
+    public static void TestThreadStart() {
+        if (Environment.GetEnvironmentVariable("FF9_TEST_THREADSTART") == null) return;
+        try {
+            var done = new System.Threading.ManualResetEventSlim();
+            var th = new System.Threading.Thread(() => done.Set());
+            th.Start("an argument");
+            Log.Info(done.Wait(2000) ? "test thread start: a ThreadStart with an argument ran" : "test thread start: it did not run");
+            var got = new object?[1];
+            var th2 = new System.Threading.Thread(o => { got[0] = o; });
+            th2.Start("passed");
+            th2.Join(2000);
+            Log.Info($"test thread start: a ParameterizedThreadStart got '{got[0]}'");
+        } catch (Exception e) { Log.Warn("test thread start: " + e); }
     }
 
     /// .NET Framework accepted relative paths (Memoria loads "StreamingAssets/Scripts/Memoria.Scripts.dll").

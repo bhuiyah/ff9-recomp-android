@@ -474,3 +474,15 @@ The swirl stayed black. Three things, all needed:
   RenderTargets.CameraTarget now stands in for null while a camera with image effects draws.
 - Checked on the Thor with -memoria-battle 336 -memoria-seed 1 (which now gets to the battle: it
   goes through the swirl, which used to stall at the title): Blank's attack shows its hit flash.
+
+## Voice acting: Thread.Start(object) (0.1.21, issues 22, 23, 26)
+
+- KupoMail's voices never played and dialogs raced ahead and stacked. Memoria.log: each line's
+  VoicePlayer.StartSound threw InvalidOperationException (ThreadWrongThreadStart): it makes its
+  watcher with `new Thread(ThreadStart)` and calls `Start(soundProfile)`. .NET Framework / Unity's
+  Mono ignored the argument; .NET 8 throws, before the sound is played. With
+  AutoDismissDialogAfterCompletion the dialog then closed at once.
+- Native/Compat.cs replaces Thread.Start(object, bool, bool) (the one Start(object) calls) with
+  the same steps minus the ThreadStart check (reflection on _startHelper, StartCore).
+  FF9_TEST_THREADSTART=1 checks both kinds of thread at startup (both ran on the Thor). Not yet
+  played with KupoMail itself.

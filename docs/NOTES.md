@@ -432,3 +432,13 @@ have it); our data's naming screen is unchanged.
   until found). The font is bold already, so the panels' regular and bold text both use it.
 - Java's System.getenv doesn't see Os.setenv's variables: the panel builds the folder path from
   GameInstall, as GameActivity does for FF9_WORLDMAP_DIR.
+
+## Get mods: the list scrolls on its own (0.1.18)
+
+- The whole Get mods page was one ScrollView, so the categories went up with the list. Now the
+  header and search stay, and the categories and the list are each in their own ScrollView
+  (refresh keeps both positions, as the one page ScrollView's was kept). Touch and the d-pad both
+  scroll the list only; the focused row is kept in view.
+- Testing on the Thor: a tap meant for the list landed on a mod's Install (Alternate Fantasy got
+  installed and turned on); its folder, .version and the Memoria.ini change were taken out again.
+  Use key events, not taps, on Get mods.

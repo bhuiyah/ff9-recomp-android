@@ -221,6 +221,9 @@ public class LauncherActivity extends Activity {
         boolean same = page.equals(shownPage);
         String keepFocus = same ? focusKey() : null;
         int keepY = same && content.getChildCount() > 0 && content.getChildAt(0) instanceof ScrollView ? content.getChildAt(0).getScrollY() : 0;
+        // Get mods scrolls its list and its categories on their own (the page itself doesn't)
+        int keepList = same && catScroll != null ? catScroll.getScrollY() : 0, keepCats = same && catsScroll != null ? catsScroll.getScrollY() : 0;
+        catScroll = catsScroll = null;
         shownPage = page;
         updateStatus();
         updateDownloadsLabel();
@@ -241,18 +244,26 @@ public class LauncherActivity extends Activity {
         }
         ScrollView sv = new ScrollView(this);
         sv.setFillViewport(true);
-        sv.addView(v);
-        content.addView(sv);
+        if (page.equals("catalog")) {
+            content.addView(v, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            sv = catScroll;
+            keepY = keepList;
+            if (same && catsScroll != null) { final ScrollView cs = catsScroll; final int cy = keepCats; cs.post(() -> cs.scrollTo(0, cy)); }
+        } else {
+            sv.addView(v);
+            content.addView(sv);
+        }
         theme(content);
         String sel = page.equals("mod") ? modBack : page;
         for (Map.Entry<String, Button> e : nav.entrySet()) e.getValue().setSelected(e.getKey().equals(sel));
-        if (same) {
+        if (same && sv != null) {
             View f = keepFocus == null ? null : restoreFocus(keepFocus);
             final int y = keepY;
-            sv.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+            final ScrollView sv2 = sv;
+            sv2.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
                 @Override public boolean onPreDraw() {
-                    sv.getViewTreeObserver().removeOnPreDrawListener(this);
-                    sv.scrollTo(0, y);
+                    sv2.getViewTreeObserver().removeOnPreDrawListener(this);
+                    sv2.scrollTo(0, y);
                     if (f != null && f.getWidth() > 0) f.requestRectangleOnScreen(new android.graphics.Rect(0, 0, f.getWidth(), f.getHeight()), true);
                     return true;
                 }
@@ -698,6 +709,9 @@ public class LauncherActivity extends Activity {
         theme(catList);
     };
 
+    /** Get mods' list and categories, each in its own scroll view (refresh keeps where they were). */
+    private ScrollView catScroll, catsScroll;
+
     private View catalogPage() {
         LinearLayout pageCol = column();
         List<ModCatalog.Mod> all = ModCatalog.mods(this);
@@ -764,7 +778,11 @@ public class LauncherActivity extends Activity {
         cats.addView(line, llp);
         for (String c : ModCatalog.categories(all))
             cats.addView(category(c, counts.getOrDefault(c, 0), c.equals(catCategory) && !catInstalledOnly, v -> { catCategory = c; catInstalledOnly = false; refresh(); }));
-        split.addView(cats, new LinearLayout.LayoutParams(dp(smallScreen ? 104 : 140), ViewGroup.LayoutParams.WRAP_CONTENT));
+        // the categories and the list scroll each on their own: the list moves, the categories stay
+        catsScroll = new ScrollView(this);
+        catsScroll.setVerticalScrollBarEnabled(false);
+        catsScroll.addView(cats);
+        split.addView(catsScroll, new LinearLayout.LayoutParams(dp(smallScreen ? 104 : 140), ViewGroup.LayoutParams.MATCH_PARENT));
         View vline = new View(this);
         vline.setBackgroundColor(0x40FFFFFF);
         LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(Math.max(1, dp(1)), ViewGroup.LayoutParams.MATCH_PARENT);
@@ -772,8 +790,10 @@ public class LauncherActivity extends Activity {
         split.addView(vline, vlp);
         catList = column();
         fillCatalogList();
-        split.addView(catList, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        pageCol.addView(split);
+        catScroll = new ScrollView(this);
+        catScroll.addView(catList);
+        split.addView(catScroll, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        pageCol.addView(split, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         return pageCol;
     }
 

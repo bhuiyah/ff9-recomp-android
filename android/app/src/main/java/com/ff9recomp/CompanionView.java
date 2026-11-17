@@ -66,7 +66,28 @@ public class CompanionView extends View {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), line = new Paint(Paint.ANTI_ALIAS_FLAG),
             text = new Paint(Paint.ANTI_ALIAS_FLAG), bmpPaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-    private final Typeface sans = Typeface.create("sans-serif", Typeface.NORMAL), sansBold = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    private Typeface sans = Typeface.create("sans-serif", Typeface.NORMAL), sansBold = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    /** The game's own text font, which the engine copies from the player's game files when it first
+     *  loads it (Text/Fonts.cs ShareWithPanels): the panels write in it once it is there. */
+    private boolean gameFont;
+    private long fontChecked;
+
+    private void loadGameFont() {
+        if (gameFont || SystemClock.uptimeMillis() - fontChecked < 1000) return;
+        fontChecked = SystemClock.uptimeMillis();
+        java.io.File f = new java.io.File(new java.io.File(new GameInstall(getContext()).files, "worldmap"), "game_font.ttf");   // FF9_WORLDMAP_DIR
+        if (!f.isFile()) return;
+        try {
+            Typeface tf = Typeface.createFromFile(f);
+            sans = tf;
+            sansBold = tf;      // the game's font is a bold one already
+            gameFont = true;
+            invalidate();
+        } catch (RuntimeException e) {
+            gameFont = true;    // unreadable: keep the system font, don't try again
+            android.util.Log.w("FF9Companion", "game font", e);
+        }
+    }
     private JSONObject state = new JSONObject();
     private String last = "";
     private final SharedPreferences prefs;
@@ -111,6 +132,7 @@ public class CompanionView extends View {
                 invalidate();
             }
             updateDim(dimOn && state.optInt("cine") == 1);
+            loadGameFont();
             if (flash != null && SystemClock.uptimeMillis() > flashUntil) { flash = null; invalidate(); }
             if (GuideInstaller.busy || System.currentTimeMillis() < GuideInstaller.statusUntil) invalidate();   // its progress
             handler.postDelayed(this, 100);

@@ -161,8 +161,29 @@ public static class Fonts {
             try {
                 f.File = new FontFile(f.Data);
                 Log.Info($"font '{f.Name}': {(f.Data.Length / 1024)} KB, {f.File.NumGlyphs} glyphs, {f.File.UnitsPerEm} units/em");
+                ShareWithPanels(f);
             } catch (Exception e) { Log.Warn($"font '{f.Name}' data: {e.Message}"); }
         }
+    }
+
+    // The bottom screen's panels (CompanionView.java) write in the game's own font: the first font
+    // file the game loads (TBUDGoStd-Bold, its text font) goes to the panels' folder, from the
+    // player's game files (it never ships in the app).
+    static bool shared;
+    static void ShareWithPanels(NFont f) {
+        if (shared || f.Data == null) return;
+        shared = true;
+        string? dir = Environment.GetEnvironmentVariable("FF9_WORLDMAP_DIR");
+        if (dir == null) return;
+        try {
+            string path = System.IO.Path.Combine(dir, "game_font.ttf");
+            var fi = new System.IO.FileInfo(path);
+            if (fi.Exists && fi.Length == f.Data.Length) return;
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.WriteAllBytes(path + ".part", f.Data);
+            System.IO.File.Move(path + ".part", path, true);
+            Log.Info($"font '{f.Name}' shared with the panels");
+        } catch (Exception e) { Log.Warn("font for the panels: " + e.Message); }
     }
 
     static readonly FieldInfo? rebuilt = typeof(Font).GetField("textureRebuilt", BindingFlags.Static | BindingFlags.NonPublic);

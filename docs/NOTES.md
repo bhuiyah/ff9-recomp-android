@@ -422,3 +422,13 @@ have it); our data's naming screen is unchanged.
   Tantalus scene's start went through several lines. With the guard the same presses step through
   the scene exactly as before the change (checked against the old engine on the Thor's autosave in
   that scene); A advances one line, Back does nothing in a dialog. An ATE itself was not reached.
+
+## The panels in the game's font (0.1.17)
+
+- The bottom screen's panels (CompanionView) drew in Android's sans-serif. The engine now copies
+  the first font file the game loads (TBUDGoStd-Bold, its text font, 3.5 MB) from the player's
+  game files to files/worldmap/game_font.ttf (Text/Fonts.cs ShareWithPanels; written again only
+  when its size differs), and the panels switch to it once it is there (checked once a second
+  until found). The font is bold already, so the panels' regular and bold text both use it.
+- Java's System.getenv doesn't see Os.setenv's variables: the panel builds the folder path from
+  GameInstall, as GameActivity does for FF9_WORLDMAP_DIR.

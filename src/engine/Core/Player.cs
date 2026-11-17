@@ -52,6 +52,7 @@ public static class Player {
     public static string[] SceneNames = Array.Empty<string>();
     public static bool Quit;
     public static Action? Render;             // set by the renderer
+    public static Action? Present;            // shows the frame Render drew (after WaitForEndOfFrame's coroutines)
     public static Action? PollInput;
     public static Action<float>? AnimationTick;   // legacy Animation, between Update and LateUpdate
 
@@ -83,13 +84,21 @@ public static class Player {
         }
         int noRenderFrom = int.TryParse(Environment.GetEnvironmentVariable("FF9_NO_RENDER_FROM"), out var nrf) ? nrf : int.MaxValue;
         Render = () => {
-            if (Clock.Frame >= noRenderFrom) { if (Environment.GetEnvironmentVariable("FF9_NO_SWAP") == null) Gfx.Device.Present(); return; }
+            if (Clock.Frame >= noRenderFrom) return;
             long r0 = Stopwatch.GetTimestamp();
             Gfx.Pipeline.RenderFrame();
-            long r1 = Stopwatch.GetTimestamp();
+            Prof.Render += Stopwatch.GetTimestamp() - r0;
             if (shotFrames.Contains(Clock.Frame)) Gfx.Device.Screenshot(System.IO.Path.Combine(shotDir, $"frame{Clock.Frame:D5}.png"));
+        };
+        // WaitForEndOfFrame's coroutines run between the two, as in Unity: the frame is drawn but
+        // not shown yet. They ran after the swap, when the back buffer is undefined (black on
+        // Adreno), so the battle swirl (SFX_Rush.CreateScreen's ReadPixels) captured black
+        // (GitHub issue 24).
+        Present = () => {
+            if (Clock.Frame >= noRenderFrom && Environment.GetEnvironmentVariable("FF9_NO_SWAP") != null) return;
+            long p0 = Stopwatch.GetTimestamp();
             Gfx.Device.Present();
-            Prof.Render += r1 - r0; Prof.Present += Stopwatch.GetTimestamp() - r1;
+            Prof.Present += Stopwatch.GetTimestamp() - p0;
         };
         Assets.AssetDB.Init();
         SceneNames = Assets.AssetDB.SceneNames;
@@ -155,6 +164,7 @@ public static class Player {
         foreach (var b in Snapshot()) if (Runs(b) && b.Started) ScriptMethods.Call(b, b.Methods.LateUpdate);
         Render?.Invoke();
         Coroutines.Run(Coroutines.Phase.EndOfFrame);
+        Present?.Invoke();
         DebugDump.Tick();
         Companion.Tick();
         UiSounds.Tick();

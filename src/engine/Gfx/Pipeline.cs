@@ -502,9 +502,28 @@ public static class Pipeline {
             if (SkipCamera != null && $"{c.GameObject.Name}@{c.Depth}" .Contains(SkipCamera)) continue;
             RenderCamera(c, null, null);
         }
+        if (traceFx && fxThisFrame && !fxShots) {
+            Log.Info("fx: cameras " + string.Join(", ", cams.Select(c => $"'{c.GameObject.Name}' depth {c.Depth} clear {c.ClearFlags} target {(c.Target != null ? "rt" : "screen")} rect {c.PixelRect}")));
+            TraceScreen("after cameras");
+        }
         Canvases.RenderOverlay();
+        if (traceFx && fxThisFrame && !fxShots) TraceScreen("after overlay");
         Gui.OnGUI();
+        if (traceFx && fxThisFrame) { if (fxShots) Device.Screenshot(System.IO.Path.Combine(Environment.GetEnvironmentVariable("FF9_WORLDMAP_DIR") ?? ".", "..", $"fx_{Core.Clock.Frame}.png")); else TraceScreen("after OnGUI"); }
+        fxThisFrame = false;
         RenderTargets.Set(null);
+    }
+
+    static bool fxThisFrame;
+    static unsafe void TraceScreen(string when) {
+        int w = Device.Width, h = Device.Height;
+        var px = new byte[w * h * 4];
+        GL.glBindFramebuffer(GL.FRAMEBUFFER, 0);
+        GL.glPixelStorei(GL.PACK_ALIGNMENT, 1);
+        fixed (byte* p = px) GL.glReadPixels(0, 0, w, h, GL.RGBA, GL.UNSIGNED_BYTE, p);
+        long sum = 0; for (int i = 0; i < px.Length; i += 4) sum += px[i] + px[i + 1] + px[i + 2];
+        GL.glBindFramebuffer(GL.FRAMEBUFFER, RenderTargets.CurrentFbo);
+        Log.Info($"fx: screen {when}={sum / Math.Max(1, px.Length / 4 * 3)}");
     }
 
     static void SendToCamera(NCamera c, string message) {
@@ -515,7 +534,103 @@ public static class Pipeline {
             }
     }
 
+    static readonly bool traceFx = Environment.GetEnvironmentVariable("FF9_TRACE_FX") != null, fxShots = Environment.GetEnvironmentVariable("FF9_TRACE_FX") == "shots";
+
+    /// FF9_TRACE_FX: average brightness of the swirl's textures (the screen it captured, its own
+    /// render textures) and of the camera's picture, to see where black comes from.
+    static unsafe void TraceFx(RenderTexture src) {
+        static string Mean(NRenderTexture rt) {
+            if (!rt.Created) return "not created";
+            var px = new byte[rt.Width * rt.Height * 4];
+            GL.glBindFramebuffer(GL.FRAMEBUFFER, rt.Fbo);
+            GL.glPixelStorei(GL.PACK_ALIGNMENT, 1);
+            fixed (byte* p = px) GL.glReadPixels(0, 0, rt.Width, rt.Height, GL.RGBA, GL.UNSIGNED_BYTE, p);
+            long sum = 0; for (int i = 0; i < px.Length; i += 4) sum += px[i] + px[i + 1] + px[i + 2];
+            return $"{sum / Math.Max(1, px.Length / 4 * 3)}";
+        }
+        var sb = new StringBuilder($"fx: dt {Core.Clock.Delta:F3}");
+        var bs = Core.Player.Behaviours.FirstOrDefault(b => b.Managed?.GetType().Name == "BattleSwirl")?.Managed;
+        var rush = bs?.GetType().GetField("_rush", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.GetValue(bs);
+        if (rush != null) sb.Append($" seq {rush.GetType().GetField("_rushSeq", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.GetValue(rush)}");
+        foreach (var b in Core.Player.Behaviours.ToList())
+            if (b.Managed is { } w && b.GameObject.ActiveInHierarchy && w.GetType().GetProperty("color") is { } cp && w.GetType().Name is "UISprite" or "UITexture") {
+                for (var pt = b.GameObject.Transform; pt != null; pt = pt.Parent)
+                    if (pt.GameObject.Name == "Event Fader Panel") { sb.Append($" fader '{b.GameObject.Name}' color {cp.GetValue(w)} enabled {b.Enabled}"); break; }
+            }
+        var sdT = typeof(FF9StateSystem).Assembly.GetType("Assets.Scripts.Common.SceneDirector");
+        const System.Reflection.BindingFlags SF = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+        if (sdT != null) sb.Append($" fadeMode {sdT.GetField("fadeMode", SF)?.GetValue(null)} target {sdT.GetField("_targetColor", SF)?.GetValue(null)} prev {sdT.GetField("_prevColor", SF)?.GetValue(null)} cur {sdT.GetField("_curFrame", SF)?.GetValue(null)}/{sdT.GetField("_targetFrame", SF)?.GetValue(null)} abr [{string.Join(";", (sdT.GetField("abrColor", SF)?.GetValue(null) as UnityEngine.Color32[] ?? Array.Empty<UnityEngine.Color32>()).Select(c => c.ToString()))}]");
+        if (Textures.OfOrNull(src) is NRenderTexture s0) sb.Append($" camera {s0.Width}x{s0.Height}={Mean(s0)}");
+        foreach (var o in Registry.All.ToList())
+            if (o is NRenderTexture rt && rt.Name.StartsWith("Rush_RT_")) sb.Append($" {rt.Name}={Mean(rt)}");
+        var res = typeof(FF9StateSystem).Assembly.GetType("SFX_Rush")?.GetField("_result", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)?.GetValue(null) as Texture;
+        if (Textures.OfOrNull(res) is { Pixels: { } rp } r) {
+            long sum = 0; for (int i = 0; i < rp.Length; i += 4) sum += rp[i] + rp[i + 1] + rp[i + 2];
+            sb.Append($" captured {r.Width}x{r.Height}={sum / Math.Max(1, rp.Length / 4 * 3)}");
+        }
+        {
+            int w = Device.Width, h = Device.Height;
+            var px = new byte[w * h * 4];
+            GL.glBindFramebuffer(GL.FRAMEBUFFER, 0);
+            GL.glPixelStorei(GL.PACK_ALIGNMENT, 1);
+            fixed (byte* p = px) GL.glReadPixels(0, 0, w, h, GL.RGBA, GL.UNSIGNED_BYTE, p);
+            long sum = 0; for (int i = 0; i < px.Length; i += 4) sum += px[i] + px[i + 1] + px[i + 2];
+            sb.Append($" screen={sum / Math.Max(1, px.Length / 4 * 3)}");
+        }
+        GL.glBindFramebuffer(GL.FRAMEBUFFER, RenderTargets.CurrentFbo);
+        Log.Info(sb.ToString());
+    }
+
+    /// A camera's image effects: its scripts' OnRenderImage(source, destination), in their order.
+    static List<(Core.NMonoBehaviour mb, System.Reflection.MethodInfo mi)> ImageEffects(NCamera c) {
+        var l = new List<(Core.NMonoBehaviour, System.Reflection.MethodInfo)>();
+        foreach (var comp in c.GameObject.Components)
+            if (comp is Core.NMonoBehaviour mb && mb.Enabled && mb.Managed != null && OnRenderImageOf(mb.Managed.GetType()) is { } mi) l.Add((mb, mi));
+        return l;
+    }
+
+    static readonly Dictionary<Type, System.Reflection.MethodInfo?> onRenderImage = new();
+    static System.Reflection.MethodInfo? OnRenderImageOf(Type type) {
+        if (onRenderImage.TryGetValue(type, out var found)) return found;
+        System.Reflection.MethodInfo? r = null;
+        for (var t = type; t != null && t != typeof(UnityEngine.MonoBehaviour) && r == null; t = t.BaseType) {
+            var mi = t.GetMethod("OnRenderImage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly);
+            if (mi != null && mi.GetParameters().Length == 2) r = mi;
+        }
+        return onRenderImage[type] = r;
+    }
+
     public static void RenderCamera(NCamera cam, UnityEngine.Shader? replacement, string? replacementTag) {
+        // OnRenderImage, as Unity: the camera draws into a temporary texture, which its image
+        // effects pass on, the last into the camera's own target (the screen when it has none).
+        // The battle swirl (BattleSwirl on SwirlScene's camera) is drawn this way: without it the
+        // screen stayed black (GitHub issue 24).
+        var fx = replacement == null ? ImageEffects(cam) : null;
+        if (fx is { Count: > 0 }) {
+            Log.Once("fx" + cam.GameObject.Name, $"camera '{cam.GameObject.Name}': image effects {string.Join(", ", fx.Select(f => f.mi.DeclaringType?.Name))}");
+            var camTarget = cam.Target;
+            int w = camTarget != null ? Textures.Of(camTarget).Width : Device.Width, h = camTarget != null ? Textures.Of(camTarget).Height : Device.Height;
+            var src = TextureIcalls.Temporary(w, h, 24);
+            cam.Target = src;
+            try { RenderCameraOnce(cam, replacement, replacementTag); }
+            finally { cam.Target = camTarget; }
+            var temps = new List<RenderTexture> { src };
+            for (int i = 0; i < fx.Count; i++) {
+                RenderTexture? dest = i == fx.Count - 1 ? camTarget : TextureIcalls.Temporary(w, h, 0);
+                if (dest != null && i < fx.Count - 1) temps.Add(dest);
+                try { fx[i].mi.Invoke(fx[i].mb.Managed, new object?[] { src, dest }); }
+                catch (System.Reflection.TargetInvocationException e) { Log.Exception(e.InnerException ?? e, $"{fx[i].mi.DeclaringType?.Name}.OnRenderImage"); }
+                if (dest != null) src = dest;
+            }
+            if (traceFx) { if (!fxShots) TraceFx(temps[0]); fxThisFrame = true; }
+            foreach (var t in temps) TextureIcalls.ReleaseTemp(t);
+            RenderTargets.Set(camTarget != null ? Textures.Of(camTarget) as NRenderTexture : null);
+            return;
+        }
+        RenderCameraOnce(cam, replacement, replacementTag);
+    }
+
+    static void RenderCameraOnce(NCamera cam, UnityEngine.Shader? replacement, string? replacementTag) {
         Camera = cam;
         Cameras.Current = cam;
         SendToCamera(cam, "OnPreCull");

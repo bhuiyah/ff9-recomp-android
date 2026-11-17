@@ -78,5 +78,10 @@ public static class Unloader {
         Pipeline.ForgetDeadMaterials();
         if (freed > 0) GC.Collect();
         Log.Info($"unloaded {freed} unused assets ({texBytes >> 20} MB of textures) in {rounds} rounds, {sw.ElapsedMilliseconds} ms; objects {Registry.Count}");
+        // Unity unloads in the background; this takes ~100 ms at once. The game's own time
+        // shouldn't jump by it: the battle swirl (SceneDirector._Swirl unloads as the swirl
+        // starts) caught up several 30 fps steps in its first frame, by when its fade had already
+        // turned the screen black (GitHub issue 24).
+        Clock.Resync();
     }
 }

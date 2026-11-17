@@ -442,3 +442,24 @@ have it); our data's naming screen is unchanged.
 - Testing on the Thor: a tap meant for the list landed on a mod's Install (Alternate Fantasy got
   installed and turned on); its folder, .version and the Memoria.ini change were taken out again.
   Use key events, not taps, on Get mods.
+
+## The battle swirl (0.1.19, issue 24)
+
+The swirl stayed black. Three things, all needed:
+- WaitForEndOfFrame coroutines ran after eglSwapBuffers, when the back buffer is undefined (black
+  on Adreno): SFX_Rush.CreateScreen's ReadPixels captured black. Player now renders, runs the
+  EndOfFrame coroutines, then presents (Render / Present), as Unity does.
+- OnRenderImage wasn't supported. SwirlScene's camera has BattleSwirl, whose OnRenderImage calls
+  SFX_Rush.PostProcess (Blits through the Rush_RT_ render textures to the screen). RenderCamera
+  now draws a camera with image effects into a temporary render texture and passes it through
+  them, the last into the camera's own target (lookup cached per script type).
+- The swirl and the Event Fader Panel's subtractive fade (FF9Wipe_FadeOutEx(5) in SFX_Rush's
+  constructor) step together at 30 fps from Time.deltaTime. _Swirl calls UnloadUnusedAssets as
+  the swirl starts; ours takes ~100 ms at once, so the first frame caught up several steps with
+  the fade nearly black. Unloader.Run now calls Clock.Resync() (Unity's unload is asynchronous).
+- Result on the Thor (FF9_TEST_FIELDS=105,104:400:6 changes fields with SwirlInBlack): the
+  captured screen zooms and turns, brightens, then fades to black over ~8 frames at 60 fps (the
+  game's own timing). A real battle's swirl was not reached here.
+- FF9_TRACE_FX=1 logs brightness of the camera picture, the Rush textures, the capture, the
+  screen after each stage, the cameras, the fader's colours; FF9_TRACE_FX=shots writes the final
+  screen of each image-effect frame to files/fx_N.png.

@@ -737,6 +737,10 @@ static class TextureIcalls {
     [Icall("UnityEngine.RenderTexture::ReleaseTemporary")]
     static void ReleaseTemporary(RenderTexture rt) { if (Textures.OfOrNull(rt) is NRenderTexture n) n.TempInUse = false; }
 
+    /// For the renderer (a camera's OnRenderImage): RenderTexture.GetTemporary / ReleaseTemporary.
+    public static RenderTexture Temporary(int w, int h, int depth) => GetTemporary(w, h, depth, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default, 1);
+    public static void ReleaseTemp(RenderTexture rt) => ReleaseTemporary(rt);
+
     [Icall("UnityEngine.RenderTexture::Internal_GetWidth")] static int RW(RenderTexture r) => RT(r).Width;
     [Icall("UnityEngine.RenderTexture::Internal_SetWidth")] static void SRW(RenderTexture r, int v) => RT(r).Width = v;
     [Icall("UnityEngine.RenderTexture::Internal_GetHeight")] static int RH(RenderTexture r) => RT(r).Height;

@@ -84,7 +84,7 @@ public static class TestLoad {
 
     static void Saved(object err, bool ok) => Log.Info($"test save finished: {err} ok={ok}");
 
-    // FF9_TEST_FIELDS=map,map,...[:frames] (tests, GitHub issue 16): once a field is up, goes to the
+    // FF9_TEST_FIELDS=map,map,...[:frames[:transition]] (tests, GitHub issues 16, 24): once a field is up, goes to the
     // next map in the list every so many frames (default 240), round and round, as a field exit
     // does (fldMapNo, then SceneDirector.Replace), and logs memory and live objects at each.
     static readonly string? fieldsSpec = Environment.GetEnvironmentVariable("FF9_TEST_FIELDS");
@@ -111,7 +111,8 @@ public static class TestLoad {
             var sd = T("Assets.Scripts.Common.SceneDirector");
             var replace = Array.Find(sd.GetMethods(F), m => m.Name == "Replace" && m.GetParameters().Length == 3 && m.GetParameters()[0].ParameterType == typeof(string))!;
             var transition = replace.GetParameters()[1].ParameterType;
-            replace.Invoke(null, new object[] { "FieldMap", Enum.ToObject(transition, 0), true });
+            int how = p.Length > 2 ? int.Parse(p[2]) : 0;      // SceneTransition (6: SwirlInBlack, the battle swirl)
+            replace.Invoke(null, new object[] { "FieldMap", Enum.ToObject(transition, how), true });
         } catch (Exception e) { Log.Warn("test fields failed: " + e); }
     }
 

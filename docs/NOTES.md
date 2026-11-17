@@ -375,3 +375,23 @@ have it); our data's naming screen is unchanged.
 - `Settings.apply` (every Play) now writes `Backend = 2` (SoLoud) into [Audio], adding it if absent.
 - Reproduced on the Thor by deleting the line; with the fix the line comes back on Play and the
   title menu works.
+
+## Field changes leaked every field's assets (0.1.14, issue 16)
+
+- Two crashes (SIGSEGV in the GPU driver's memcpy under glDrawElements, at a field's first frames)
+  came with the game at 1.6 and 2.0 GB. FF9 frees each field's runtime textures, meshes and
+  materials only through Resources.UnloadUnusedAssets (SceneDirector.ChangeScene), which was a
+  stub. FF9_TEST_FIELDS=map,map,...[:frames] (Core/TestLoad.cs) changes fields round and round and
+  logs memory: +~40 MB, ~1100 meshes and ~4 textures per change.
+- Core/Unloader.cs: candidates (runtime textures, meshes, materials, sprites, render textures not
+  temporary or bound, and NAsset copies of file assets) leave the registry and their records drop
+  the managed object; a GC with weak handles shows which are still reached. Up to three rounds,
+  ~120 ms on the Thor. FF9_TEST_NO_UNLOAD=1 turns it off.
+- What kept things alive: Renderer.material's copies of file materials are NAsset records (not
+  NMaterial), so they were never candidates, and each held a model's 512x512 render texture. NAsset
+  now frees its content's GL objects too (it didn't when destroyed), and Pipeline's variant table
+  (keyed by every material ever drawn) drops materials marked Gone.
+- The font atlas is held by NFont directly: HideFlags.DontUnloadUnusedAsset.
+- 68 changes after: ~70 textures, ~2000 meshes, RSS flat at ~1.25 GB (1.7 GB and climbing at 48
+  before). "Error Env Play()" boxes in that test come from warping out of the story's order (shown
+  with the unloader off too).

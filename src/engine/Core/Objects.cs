@@ -23,6 +23,7 @@ public class NObject {
     public HideFlags HideFlags;
     public bool DontDestroy;
     public bool IsAsset;          // loaded from an asset file (not a scene object)
+    public bool Gone;             // destroyed or unloaded (caches keyed by the record drop it)
     public int ClassId;
     public override string ToString() => $"{GetType().Name}#{Id} '{Name}'";
     /// Frees GL objects when the object is destroyed.
@@ -111,9 +112,20 @@ public static class Registry {
     public static T Of<T>(UObject? m) where T : NObject =>
         Get(m) as T ?? throw new NullReferenceException($"{typeof(T).Name}: object is null or destroyed");
 
+    /// UnloadUnusedAssets (Core/Unloader.cs): an object out of the table while the GC decides
+    /// whether anything still reaches its managed object, then back in or gone.
+    internal static void Hide(NObject n) => objs[n.Id >> 1] = null;
+    internal static void Unhide(NObject n) => objs[n.Id >> 1] = n;
+
+    internal static void MarkGone(NObject n) {
+        n.Gone = true;
+        if (n is Assets.NAsset { Data: NObject d }) d.Gone = true;
+    }
+
     public static void Remove(NObject n) {
         if (n.Managed is { } m) Unsafe.As<ObjectLayout>(m).CachedPtr = IntPtr.Zero;
         objs[n.Id >> 1] = null;
+        MarkGone(n);
         if (Gfx.Device.Ready) n.FreeGpu();
     }
 

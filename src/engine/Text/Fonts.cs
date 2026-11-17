@@ -34,7 +34,8 @@ public sealed class NFont : NObject {
 
     public void EnsureAtlas() {
         if (Atlas != null) return;
-        Atlas = new NTexture { Width = 1024, Height = 1024, Format = TextureFormat.Alpha8, Pixels = new byte[1024 * 1024 * 4], Filter = FilterMode.Bilinear, Wrap = TextureWrapMode.Clamp, Name = "Font Texture" };
+        Atlas = new NTexture { Width = 1024, Height = 1024, Format = TextureFormat.Alpha8, Pixels = new byte[1024 * 1024 * 4], Filter = FilterMode.Bilinear, Wrap = TextureWrapMode.Clamp, Name = "Font Texture",
+            HideFlags = HideFlags.DontUnloadUnusedAsset };     // the font's own: held here, not through its managed object (Core/Unloader.cs)
         for (int i = 0; i < Atlas.Pixels.Length; i += 4) { Atlas.Pixels[i] = Atlas.Pixels[i + 1] = Atlas.Pixels[i + 2] = 255; }
         Registry.Add(Atlas, (UObject)RuntimeHelpers.GetUninitializedObject(typeof(Texture2D)));
         TextureObj = (Texture)Atlas.Managed!;

@@ -15,6 +15,10 @@ public sealed class NAsset : NObject {
     public SerializedFile? File;
     public long PathId;
     public object? Data;          // decoded content, filled by the class's reader
+
+    // a copy of a file's texture, mesh or material (Cloner: Renderer.material, Instantiate) is an
+    // NAsset too: its content's GL objects go with it
+    public override void FreeGpu() { if (Data is NObject d) d.FreeGpu(); }
 }
 
 public static class AssetDB {

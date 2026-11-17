@@ -386,6 +386,15 @@ public static class Pipeline {
     sealed class Variant { public SubProgram? Vp, Fp; public int Sig = int.MinValue; }
     static readonly Dictionary<(ShaderPass, NMaterial?), Variant> variants = new();
 
+    /// Drops the variants of materials that are gone (destroyed or unloaded): the table held every
+    /// material ever drawn, and with them their textures.
+    public static int ForgetDeadMaterials() {
+        var dead = variants.Keys.Where(k => k.Item2 is { Gone: true }).ToList();
+        foreach (var k in dead) variants.Remove(k);
+        if (passMat is { Gone: true }) passMat = null;
+        return dead.Count;
+    }
+
     static int KeywordSig(NMaterial? m) {
         int h = Globals.Keywords.Count * 7919;
         foreach (var k in Globals.Keywords) h ^= k.GetHashCode();

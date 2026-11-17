@@ -112,7 +112,7 @@ public static class ResourcesDB {
 
     [Icall("UnityEngine.Resources::UnloadAsset")] static void Unload(UObject o) { }
     [Icall("UnityEngine.Resources::UnloadUnusedAssets")]
-    static AsyncOperation UnloadUnused() { var m = AsyncOps.Create<AsyncOperation>(out var op); op.Complete(); GC.Collect(); return m; }
+    static AsyncOperation UnloadUnused() { Unloader.Run(); var m = AsyncOps.Create<AsyncOperation>(out var op); op.Complete(); return m; }
 }
 
 public static class TextAssets {

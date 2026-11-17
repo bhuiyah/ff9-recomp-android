@@ -3,6 +3,7 @@
 // slot and file are 0-based (the screen's "slot 2" / "FILE03" are 1 / 2). Reflection: the game's
 // delegate and enum types are built against the old mscorlib.
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -83,7 +84,53 @@ public static class TestLoad {
 
     static void Saved(object err, bool ok) => Log.Info($"test save finished: {err} ok={ok}");
 
+    // FF9_TEST_FIELDS=map,map,...[:frames] (tests, GitHub issue 16): once a field is up, goes to the
+    // next map in the list every so many frames (default 240), round and round, as a field exit
+    // does (fldMapNo, then SceneDirector.Replace), and logs memory and live objects at each.
+    static readonly string? fieldsSpec = Environment.GetEnvironmentVariable("FF9_TEST_FIELDS");
+    static long fieldsSince = -1;
+    static int fieldsAt, fieldsDone;
+
+    static void TestFields() {
+        if (fieldsSpec == null) return;
+        if (fieldsSince < 0) {
+            if (Player.LastSceneLoaded != "FieldMap") return;
+            fieldsSince = Clock.Frame;
+            return;
+        }
+        var p = fieldsSpec.Split(':');
+        int every = p.Length > 1 ? int.Parse(p[1]) : 240;
+        if (Clock.Frame - fieldsSince < every || Player.LastSceneLoaded != "FieldMap") return;
+        Log.Info($"test fields: {fieldsDone} changes, {Memory()}");
+        var maps = p[0].Split(',');
+        short map = short.Parse(maps[fieldsAt++ % maps.Length]);
+        fieldsDone++;
+        fieldsSince = Clock.Frame;
+        try {
+            FF9StateSystem.Common.FF9.fldMapNo = map;
+            var sd = T("Assets.Scripts.Common.SceneDirector");
+            var replace = Array.Find(sd.GetMethods(F), m => m.Name == "Replace" && m.GetParameters().Length == 3 && m.GetParameters()[0].ParameterType == typeof(string))!;
+            var transition = replace.GetParameters()[1].ParameterType;
+            replace.Invoke(null, new object[] { "FieldMap", Enum.ToObject(transition, 0), true });
+        } catch (Exception e) { Log.Warn("test fields failed: " + e); }
+    }
+
+    /// The process's memory and the engine's live objects, for leak checks.
+    static string Memory() {
+        string rss = "?";
+        try { rss = System.IO.File.ReadAllLines("/proc/self/status").FirstOrDefault(l => l.StartsWith("VmRSS"))?.Substring(6).Trim() ?? "?"; } catch { }
+        int tex = 0, mesh = 0; long texMB = 0;
+        foreach (var o in Registry.All) {
+            if (o is Gfx.NTexture t) { tex++; texMB += (long)t.Width * t.Height * 4; }
+            else if (o is Gfx.NMesh) mesh++;
+        }
+        var names = Registry.All.OfType<Gfx.NTexture>().GroupBy(t => $"{t.Name}:{t.Width}x{t.Height}:{(t.IsAsset ? "a" : "r")}")
+            .OrderByDescending(g => g.Count()).Take(6).Select(g => $"{g.Key}x{g.Count()}");
+        return $"RSS {rss}, objects {Registry.Count}, textures {tex} ({texMB >> 20} MB at 4 bytes a pixel), meshes {mesh}, managed {GC.GetTotalMemory(false) >> 20} MB; most: {string.Join(" ", names)}";
+    }
+
     public static void Tick() {
+        TestFields();
         TestSave();
         TestQuadMist();
         if (autoload && !autoloadDone) {

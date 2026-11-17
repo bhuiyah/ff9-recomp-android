@@ -68,11 +68,13 @@ public sealed class ScriptMethods {
         // last line before a crash names it
         if (traceMods && mi.DeclaringType?.Assembly is { } asm && asm != typeof(FF9StateSystem).Assembly && asm.GetName().Name!.StartsWith("Memoria.Scripts"))
             Log.Info($"modcall {mi.DeclaringType!.FullName}.{mi.Name}");
+        long p0 = Core.Prof.On ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         try {
             object? r = Invoker(mi)(mb.Managed, arg);
             if (r is IEnumerator e) Coroutines.Start(mb, e);
         } catch (Exception ex) {
             Log.Exception(ex is TargetInvocationException t ? t.InnerException ?? ex : ex, $"{mb.Managed!.GetType().Name}.{mi.Name}");
         }
+        if (p0 != 0) Core.Prof.Script(mi, System.Diagnostics.Stopwatch.GetTimestamp() - p0);
     }
 }

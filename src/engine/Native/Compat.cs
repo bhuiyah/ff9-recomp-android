@@ -25,6 +25,108 @@ public static class Compat {
         Detour(typeof(Assembly).GetMethod(nameof(Assembly.LoadFile), new[] { typeof(string) })!, M(nameof(LoadFile)));
         InstallThreadStart();
         InstallCloudFolder();
+        InstallMovieClock();
+        InstallNoWalkmeshFix();
+    }
+
+    // Movies with another frame rate than the game's 15 (Moguri's 30 fps ones). MovieMaterial.Open
+    // sets playSpeed = 15 / the movie's rate, right for its fixed step (1/15 s a frame, FMVs with
+    // Memoria's VSync off) but not for its other one, the frame's time (VSync on, the default, and
+    // all field movies): the movie's clock ran at half speed and only the jumps to the sound's
+    // position (when it was 66 ms behind) moved it on: drawn at the movie's rate (MBG.Play sets the
+    // frame rate to it), the picture went slow, slow, jump (GitHub issue 27). MovieMaterial.Load (which calls Open) is replaced by
+    // the same steps, and then a clock that follows the frame's time runs at speed 1.
+    static FieldInfo? mmHasStream, mmFirstFrame, mmCycle, mmKey, mmElapsed, mmAdvance, mmFinished, mmSpeed, mmIsFmv;
+    static MethodInfo? mmStop, mmOpen;
+    static PropertyInfo? mmVSync;
+
+    static void InstallMovieClock() {
+        const BindingFlags I = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var t = Type.GetType("Assets.Sources.Graphics.Movie.MovieMaterial, Assembly-CSharp");
+        FieldInfo? F(string n) => t?.GetField(n, I);
+        mmHasStream = F("hasStream"); mmFirstFrame = F("getFirstFrame"); mmCycle = F("preciseTimeCycleCounter");
+        mmKey = F("movieKey"); mmElapsed = F("m_elapsedTime"); mmAdvance = F("advance");
+        mmFinished = F("m_hasFinished"); mmSpeed = F("playSpeed"); mmIsFmv = F("isFMV");
+        mmStop = t?.GetMethod("Stop", I, null, Type.EmptyTypes, null);
+        mmOpen = t?.GetMethod("Open", I, null, Type.EmptyTypes, null);
+        mmVSync = Type.GetType("Memoria.Configuration+Graphics, Assembly-CSharp")?.GetProperty("VSync", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        var load = t?.GetMethod("Load", I, null, new[] { typeof(string) }, null);
+        if (load == null || mmHasStream == null || mmFirstFrame == null || mmCycle == null || mmKey == null || mmElapsed == null
+            || mmAdvance == null || mmFinished == null || mmSpeed == null || mmIsFmv == null || mmStop == null || mmOpen == null || mmVSync == null) {
+            if (t != null) Log.Warn("movies: this Memoria's MovieMaterial differs; its clock is left as it is");
+            return;
+        }
+        Detour(load, M(nameof(MovieLoad)));
+    }
+
+    static void MovieLoad(object self, string movieKey) {
+        if ((bool)mmHasStream!.GetValue(self)!) Invoke(mmStop!, self);
+        mmFirstFrame!.SetValue(self, false);
+        mmCycle!.SetValue(self, 0);
+        mmKey!.SetValue(self, movieKey);
+        mmElapsed!.SetValue(self, 0.0);
+        try { Invoke(mmOpen!, self); }
+        catch (Exception e) { Log.Warn($"[Movie.MovieMaterial.GLPlugin] Error when loading {movieKey}: {e}"); throw; }
+        mmAdvance!.SetValue(self, false);
+        mmHasStream.SetValue(self, true);
+        mmFinished!.SetValue(self, false);
+        bool fixedStep = (bool)mmIsFmv!.GetValue(self)! && !(bool)mmVSync!.GetValue(null)!;
+        if (!fixedStep) mmSpeed!.SetValue(self, 1f);
+    }
+
+    // The opening movie's field (map 70, "Opening-For FMV") has no walkmesh: FieldMap.LoadFieldMap
+    // stops before making one. With Memoria's PSXMovementMethod on, FieldMapActorController.MovePC
+    // still reads fieldMap.walkMesh for the slope, and the null threw in every frame. The throw left
+    // HonoBehaviorSystem's list of new behaviours uncleared, so they were added to its main list
+    // again each frame (about 40 more a frame): the game got slower through the whole movie, 30 fps
+    // to 15 by its end (GitHub issue 27). While the field has no walkmesh, PSXMovementMethod
+    // (the slope, which needs one) is off here; it comes back as it was when there is one.
+    static FieldInfo? evInstance, evFieldmap, fmWalkMesh, cfgInstance, cfgControl, ctlPsxMove, iniValue;
+    static bool walkFixReady, psxOff;
+    static object? psxIni;
+
+    static void InstallNoWalkmeshFix() {
+        const BindingFlags I = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        const BindingFlags S = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+        var asm = Type.GetType("FieldMap, Assembly-CSharp")?.Assembly;
+        if (asm == null) return;
+        var ev = asm.GetType("EventEngine");
+        evInstance = ev == null ? null : asm.GetType("PersistenSingleton`1")?.MakeGenericType(ev).GetField("instance", S);
+        evFieldmap = ev?.GetField("fieldmap", I);
+        fmWalkMesh = asm.GetType("FieldMap")?.GetField("walkMesh", I);
+        var cfg = asm.GetType("Memoria.Configuration");
+        cfgInstance = cfg?.GetField("Instance", S);
+        cfgControl = cfg?.GetField("_control", I);
+        ctlPsxMove = cfgControl?.FieldType.GetField("PSXMovementMethod", I);
+        iniValue = ctlPsxMove?.FieldType.GetField("Value", I);
+        walkFixReady = evInstance != null && evFieldmap != null && fmWalkMesh != null && cfgInstance != null && cfgControl != null && ctlPsxMove != null && iniValue != null;
+        if (!walkFixReady) Log.Warn("fields without a walkmesh: this Memoria differs; MovePC is left as it is");
+    }
+
+    /// Before the frame's Update: PSXMovementMethod off while the field has no walkmesh.
+    public static void FieldTick() {
+        if (!walkFixReady || Core.Player.LastSceneLoaded != "FieldMap") { if (psxOff) RestorePsx(); return; }
+        object? fm = evFieldmap!.GetValue(evInstance!.GetValue(null));
+        // no field map yet (or the last field's, gone) counts too: the field's first frame comes
+        // before EventEngine has the new one
+        bool noWalk = !(fm is UnityEngine.Object u && u != null) || fmWalkMesh!.GetValue(fm) == null;
+        if (noWalk == psxOff) return;
+        if (!noWalk) { RestorePsx(); return; }
+        psxIni = ctlPsxMove!.GetValue(cfgControl!.GetValue(cfgInstance!.GetValue(null)));
+        if (psxIni == null || !(bool)iniValue!.GetValue(psxIni)!) { psxIni = null; return; }
+        iniValue.SetValue(psxIni, false);
+        psxOff = true;
+    }
+
+    static void RestorePsx() {
+        if (psxIni != null) iniValue!.SetValue(psxIni, true);
+        psxIni = null;
+        psxOff = false;
+    }
+
+    static void Invoke(MethodInfo m, object self) {
+        try { m.Invoke(self, null); }
+        catch (TargetInvocationException e) when (e.InnerException != null) { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw(); }
     }
 
     // Thread.Start(object) on a thread made with a plain ThreadStart: .NET Framework (Unity's

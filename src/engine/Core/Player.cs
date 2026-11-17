@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using FF9Engine.Scripting;
 using FF9Engine.Icalls;
 using UnityEngine;
@@ -149,23 +150,34 @@ public static class Player {
     static void Frame() {
         Native.FaultHandlers.Tick();
         Clock.Tick();
+        long ps = Prof.On ? Stopwatch.GetTimestamp() : 0;
         PollInput?.Invoke();
+        Prof.Part(0, ref ps);
         // FixedUpdate at a fixed rate
         while (Clock.FixedTime + Clock.FixedDelta <= Clock.Now) {
             Clock.FixedTime += Clock.FixedDelta;
             foreach (var b in Snapshot()) if (Runs(b)) ScriptMethods.Call(b, b.Methods.FixedUpdate);
             Coroutines.Run(Coroutines.Phase.Fixed);
         }
+        Prof.Part(1, ref ps);
+        Native.Compat.FieldTick();
         RunStarts();
         foreach (var b in Snapshot()) if (Runs(b) && b.Started) ScriptMethods.Call(b, b.Methods.Update);
+        Prof.Part(2, ref ps);
         Coroutines.RunInvokes();
         Coroutines.Run(Coroutines.Phase.Update);
+        Prof.Part(3, ref ps);
         AsyncOps.Tick();
         AnimationTick?.Invoke(Clock.Delta);
+        Prof.Part(4, ref ps);
         foreach (var b in Snapshot()) if (Runs(b) && b.Started) ScriptMethods.Call(b, b.Methods.LateUpdate);
+        Prof.Part(5, ref ps);
         Render?.Invoke();
+        Prof.Part(6, ref ps);
         Coroutines.Run(Coroutines.Phase.EndOfFrame);
+        Prof.Part(7, ref ps);
         Present?.Invoke();
+        Prof.Part(8, ref ps);
         DebugDump.Tick();
         Companion.Tick();
         UiSounds.Tick();
@@ -175,7 +187,9 @@ public static class Player {
         TextInput.Tick();
         Widescreen.Tick();
         if (memEvery > 0 && Clock.Frame % memEvery == 0) MemStat();
+        Prof.Part(9, ref ps);
         Destroyer.Flush();
+        Prof.Part(10, ref ps);
         while (levelRequests.Count > 0) {
             var r = levelRequests.Dequeue();
             LoadLevel(r.Index, r.Additive);
@@ -227,6 +241,8 @@ public static class Player {
     }
 
     static bool Runs(NMonoBehaviour b) => b.Enabled && b.Managed != null && b.GameObject.ActiveInHierarchy && Registry.Get(b.Managed) == b;
+
+    public static int PendingStarts => pendingStart.Count;
 
     static void RunStarts() {
         while (pendingStart.Count > 0) {
@@ -355,13 +371,27 @@ public static class Destroyer {
 }
 
 /// Counts of GPU uploads between memory reports.
-/// FF9_PROFILE=n: every n frames, the mean milliseconds per frame in game logic (scripts and
+/// FF9_PROFILE=n (FF9_TRACE_PROFILE=n on a device): every n frames, the mean milliseconds per frame in game logic (scripts and
 /// animation, without rendering), render submission (culling, sorting, GL calls) and the swap.
 public static class Prof {
-    static readonly int every = int.TryParse(Environment.GetEnvironmentVariable("FF9_PROFILE"), out var n) ? n : 0;
+    static readonly int every = int.TryParse(Environment.GetEnvironmentVariable("FF9_PROFILE") ?? Environment.GetEnvironmentVariable("FF9_TRACE_PROFILE"), out var n) ? n : 0;
     public static long Render, Present;
     static long total, worst;
     static int frames;
+    public static bool On => every > 0;
+    // the scripts' messages (Update, LateUpdate...) that took the most time
+    static readonly Dictionary<MethodInfo, long> scripts = new();
+    // the frame's parts: input, fixed steps, starts+Update, coroutines, animation, LateUpdate,
+    // render, end-of-frame coroutines, swap, the engine's own ticks, destroys
+    static readonly long[] parts = new long[11];
+    static readonly string[] partNames = { "input", "fixed", "update", "coroutines", "anim", "late", "render", "endframe", "swap", "ticks", "destroy" };
+    public static void Part(int i, ref long since) {
+        if (since == 0) return;
+        long now = Stopwatch.GetTimestamp();
+        parts[i] += now - since;
+        since = now;
+    }
+    public static void Script(MethodInfo m, long ticks) { scripts.TryGetValue(m, out var t); scripts[m] = t + ticks; }
 
     public static void Frame(long ticksAll) {
         if (every <= 0) return;
@@ -370,6 +400,14 @@ public static class Prof {
         double ms(long t) => t * 1000.0 / Stopwatch.Frequency / frames;
         Log.Info($"prof parts: gather+sort {ms(Gfx.Pipeline.ProfGather):F2}, bind {ms(Gfx.Pipeline.ProfBind):F2}, draw {ms(Gfx.Pipeline.ProfDraw):F2} ms");
         Gfx.Pipeline.ProfGather = Gfx.Pipeline.ProfBind = Gfx.Pipeline.ProfDraw = 0;
+        if (scripts.Count > 0) {
+            var top = new List<KeyValuePair<MethodInfo, long>>(scripts);
+            top.Sort((a, b) => b.Value.CompareTo(a.Value));
+            Log.Info("prof scripts: " + string.Join(", ", top.GetRange(0, Math.Min(5, top.Count)).ConvertAll(k => $"{k.Key.DeclaringType?.Name}.{k.Key.Name} {ms(k.Value):F2}")));
+            scripts.Clear();
+        }
+        Log.Info("prof frame parts: " + string.Join(", ", partNames.Select((n, i) => $"{n} {ms(parts[i]):F2}")) + $"; behaviours {Player.Behaviours.Count}, waiting to start {Player.PendingStarts}, objects {Registry.Count}; GC {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}, paused {GC.GetTotalPauseDuration().TotalMilliseconds:F0} ms, heap {GC.GetTotalMemory(false) >> 20} MB");
+        Array.Clear(parts);
         Log.Info($"prof {frames} frames: all {ms(total):F2} ms (logic {ms(total - Render - Present):F2}, render {ms(Render):F2}, swap {ms(Present):F2}), worst {worst * 1000.0 / Stopwatch.Frequency:F1} ms, draws {Gfx.Pipeline.LastDrawCount}, culled {Gfx.Pipeline.LastCulled}");
         total = worst = Render = Present = 0; frames = 0;
     }

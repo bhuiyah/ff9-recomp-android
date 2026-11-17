@@ -115,7 +115,59 @@ final class Settings {
         // issue 20) left Memoria on the PC's SdLib: SoundLib.Awake failed, and the title screen's
         // setup with it, so its menu never took input.
         put(lines, "Audio", "Backend", "2");
+        tileSize(c, lines, game);
         writeIni(ini, lines);
+    }
+
+    /**
+     * Moguri's HD field backgrounds are cut in 64-pixel tiles, the game's own in 32 ([Graphics]
+     * TileSize). Moguri 9 (MoguriMain) says so in its own Memoria.ini, which Memoria reads over the
+     * main one; the older installer's MoguriFiles doesn't, and with TileSize = 32 every field
+     * background came out as scrambled and black squares (GitHub issue 28). So: an active Moguri
+     * backgrounds folder that doesn't set it gets 64, and the game's 32 comes back once it is off.
+     */
+    static void tileSize(Context c, List<String> lines, File game) {
+        boolean moguri = false;
+        for (String f : activeFolders(lines)) {
+            if (setsTileSize(new File(game, f))) return;     // that mod decides
+            String n = f.toLowerCase(java.util.Locale.ROOT);
+            if (n.startsWith("moguri") && !n.contains("video") && !n.contains("soundtrack") && !n.contains("music")) { moguri = true; break; }
+        }
+        SharedPreferences p = prefs(c);
+        if (moguri) {
+            put(lines, "Graphics", "TileSize", "64");
+            p.edit().putBoolean("tile_size_64", true).apply();
+        } else if (p.getBoolean("tile_size_64", false)) {
+            put(lines, "Graphics", "TileSize", "32");
+            p.edit().remove("tile_size_64").apply();
+        }
+    }
+
+    /** [Mod] FolderNames: the active mod folders, highest priority first. */
+    static List<String> activeFolders(List<String> lines) {
+        List<String> r = new ArrayList<>();
+        java.util.regex.Pattern key = java.util.regex.Pattern.compile("^\\s*FolderNames\\s*=(.*)$");
+        java.util.regex.Pattern quoted = java.util.regex.Pattern.compile("\"([^\"]*)\"");
+        for (String l : lines) {
+            java.util.regex.Matcher m = key.matcher(l);
+            if (!m.matches()) continue;
+            java.util.regex.Matcher q = quoted.matcher(m.group(1));
+            while (q.find()) if (!q.group(1).trim().isEmpty()) r.add(q.group(1).trim());
+            break;
+        }
+        return r;
+    }
+
+    private static boolean setsTileSize(File modFolder) {
+        File ini = new File(modFolder, "Memoria.ini");
+        if (!ini.isFile()) return false;
+        try {
+            for (String l : Files.readAllLines(ini.toPath(), StandardCharsets.ISO_8859_1))
+                if (l.trim().matches("(?i)TileSize\\s*=\\s*\\d+")) return true;
+        } catch (IOException e) {
+            return false;
+        }
+        return false;
     }
 
     static void writeIni(File ini, List<String> lines) throws IOException {

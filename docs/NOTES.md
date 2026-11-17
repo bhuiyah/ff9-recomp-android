@@ -486,3 +486,32 @@ The swirl stayed black. Three things, all needed:
   the same steps minus the ThreadStart check (reflection on _startHelper, StartCore).
   FF9_TEST_THREADSTART=1 checks both kinds of thread at startup (both ran on the Thor). Not yet
   played with KupoMail itself.
+
+## Moguri backgrounds in 32-pixel tiles; 30 fps movies (0.1.22, issues 28, 27)
+
+- Issue 28: every field background was scrambled squares, half black. The Moguri Mod from its
+  older installer (MoguriFiles, MoguriSoundtrack, MoguriVideo) with `[Graphics] TileSize = 32`:
+  its atlas (2924x2992 = 43x44 tiles of 64 + 2 border) was cut in 36-pixel cells. Moguri 9
+  (MoguriMain) sets 64 in its own Memoria.ini, which Memoria reads over the main one (the Thor:
+  main 32 + MoguriMain's 64 drew right). Settings.tileSize, at each start: an active Moguri
+  backgrounds folder without its own TileSize gets 64; 32 comes back when it is off (the pref
+  tile_size_64 says the launcher set it).
+- Issue 27, 30 fps movies (MoguriVideo) choppy. Two causes, both measured with
+  FF9_TRACE_MOVIE (1: draws without a new frame / skipping frames; 2: each draw's target and
+  wall time) and FF9_TRACE_PROFILE=n (FF9_PROFILE's name in env.txt; it now logs the slowest scripts and
+  the frame's parts):
+  - MovieMaterial.Open sets playSpeed = 15 / the movie's fps (0.5 here). With Memoria's VSync on
+    the clock adds deltaTime * playSpeed, so it ran at half speed and only the jumps to the
+    audio position (66 ms behind) moved it on. Compat replaces MovieMaterial.Load (the same
+    steps, then playSpeed 1 unless the FMV fixed-step path, VSync off, is the one used).
+  - The opening's field (map 70) has no walkmesh (FieldMap.LoadFieldMap returns before making
+    one). With PSXMovementMethod on, MovePC's slope line threw in every frame, inside
+    HonoBehaviorSystem's loop over new behaviours, before that list was cleared: the same
+    behaviours were added to its main list again each frame (4411, 16072, 27694... every 300
+    frames), and the game slowed from 30 fps to 15 through the movie. Compat.FieldTick turns
+    PSXMovementMethod off in memory while the field has no walkmesh (or no field map yet).
+  - On the Thor, the opening FMV in MoguriVideo: before, 2822 draws in 121 s, 778 without a new
+    frame, 755 skipping; after, 3632 draws, 68 and 4, frame time flat. The decoder also shows
+    the frame nearest the target now (half a frame ahead), not the last one before it.
+- Not answered here: issue 29 (a second Blank after Steiner's attack) with AlternateFantasy and
+  BlackCat active.

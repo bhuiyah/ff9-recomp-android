@@ -29,6 +29,8 @@ typedef struct {
     /* decode cost, written to the log when the movie closes (high-resolution movie mods) */
     int frames, slow;
     double decodeMs, worstMs;
+    /* FF9_TRACE_MOVIE: draws that showed no new frame, and ones that skipped frames */
+    int draws, repeats, skips;
 } Movie;
 
 static double now_ms(void) {
@@ -48,7 +50,9 @@ EXPORT void CloseStream(Movie *m) {
     if (m->frames > 0 && m->dec)
         fprintf(stdout, "movie %dx%d: %d frames, decode %.1f ms average, %.1f ms worst, %d over a frame's time\n",
                 m->dec->width, m->dec->height, m->frames, m->decodeMs / m->frames, m->worstMs, m->slow);
-    m->frames = m->slow = 0;
+    if (m->draws > 0 && getenv("FF9_TRACE_MOVIE"))
+        fprintf(stdout, "movie draws %d: %d without a new frame, %d skipping frames\n", m->draws, m->repeats, m->skips);
+    m->frames = m->slow = m->draws = m->repeats = m->skips = 0;
     m->decodeMs = m->worstMs = 0;
     if (m->dec) avcodec_free_context(&m->dec);
     if (m->fmt) avformat_close_input(&m->fmt);
@@ -144,19 +148,29 @@ static void upload(Movie *m) {
     m->uploadedTime = m->decodedTime;
 }
 
-/* decode up to the target time (dropping late frames) and upload the newest */
+/* decode up to the target time (dropping late frames) and upload the newest: the frame nearest
+   the target. The game draws movies at the movie's own rate (MBG.Play sets the frame rate to it),
+   so targets fall about on frames' starts; the nearest frame, not the last one before the target,
+   keeps a little timing noise from showing a frame twice and skipping the next. */
 EXPORT void SetTargetDisplayDecodeTime(Movie *m, double t) {
     if (!m || m->stream < 0) return;
+    /* FF9_TRACE_MOVIE=2: each draw's target time and the wall clock (the first 6000 draws) */
+    static int traceDraws = -1;
+    if (traceDraws < 0) { const char *e = getenv("FF9_TRACE_MOVIE"); traceDraws = e && e[0] == '2'; }
+    if (traceDraws && m->draws < 6000) fprintf(stdout, "mdraw %.4f %.1f %.4f\n", t, now_ms(), m->decodedTime);
     m->targetTime = t;
-    while (!m->finished && m->decodedTime + 1.0 / m->fps <= t) {
+    int n = 0;
+    while (!m->finished && m->decodedTime + 0.5 / m->fps <= t) {
         double t0 = now_ms();
         if (!decode_next(m)) break;
+        n++;
         double ms = now_ms() - t0;
         m->frames++;
         m->decodeMs += ms;
         if (ms > m->worstMs) m->worstMs = ms;
         if (ms > 1000.0 / m->fps) m->slow++;
     }
+    if (!m->finished) { m->draws++; if (n == 0) m->repeats++; else if (n > 1) m->skips++; }
     upload(m);
 }
 

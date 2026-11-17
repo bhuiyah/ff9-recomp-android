@@ -56,9 +56,32 @@ static class InputIcalls {
 
     [Icall("UnityEngine.Input::GetAxis")]
     [Icall("UnityEngine.Input::GetAxisRaw")] static float GetAxis(string a) => Math.Clamp(AxisValue(a), -1, 1);
-    [Icall("UnityEngine.Input::GetButton")] static bool GetButton(string b) => false;
-    [Icall("UnityEngine.Input::GetButtonDown")] static bool GetButtonDown(string b) => false;
-    [Icall("UnityEngine.Input::GetButtonUp")] static bool GetButtonUp(string b) => false;
+    // Unity's Input Manager buttons. FF9's are named after the pad button they stand for
+    // ("JoystickButton6"); HonoInputManager reads its joystick keys this way (and the key codes
+    // too, for some). Select (Back, joystick button 6) came only this way, so Active Time Events
+    // never opened (GitHub issue 16).
+    static ushort? NamedButton(string name) =>
+        name.StartsWith("JoystickButton", StringComparison.Ordinal) && int.TryParse(name.AsSpan(14), out int n) && n >= 0 && n < joyButtons.Length
+            ? joyButtons[n] : null;
+
+    static readonly bool traceButtons = Environment.GetEnvironmentVariable("FF9_TRACE_BUTTONS") != null;
+    static bool Trace(string kind, string name, bool v) { if (v && traceButtons) Log.Info($"input: {kind}(\"{name}\")"); return v; }
+
+    // A press counts for the first ask in a frame only: while it catches up (a slow frame, a field
+    // loading) the game runs several update loops in one frame, and each saw the press again (one
+    // press of A during a field's start went through several lines of dialog).
+    static readonly Dictionary<(string, bool), long> seen = new();
+    static bool Once(string name, bool down, bool v) {
+        if (!v) return false;
+        long f = Core.Clock.Frame;
+        if (seen.TryGetValue((name, down), out long at) && at == f) return false;
+        seen[(name, down)] = f;
+        return true;
+    }
+
+    [Icall("UnityEngine.Input::GetButton")] static bool GetButton(string b) => NamedButton(b) is { } x && Pad.Held(x);
+    [Icall("UnityEngine.Input::GetButtonDown")] static bool GetButtonDown(string b) => Trace("GetButtonDown", b, Once(b, true, NamedButton(b) is { } x && Pad.Pressed(x)));
+    [Icall("UnityEngine.Input::GetButtonUp")] static bool GetButtonUp(string b) => Once(b, false, NamedButton(b) is { } x && Pad.Released(x));
     [Icall("UnityEngine.Input::GetKeyString")] static bool GetKey(string k) => KeyButton(k) is { } b && Pad.Held(b);
     [Icall("UnityEngine.Input::GetKeyDownString")] static bool GetKeyDown(string k) => KeyButton(k) is { } b && Pad.Pressed(b);
     [Icall("UnityEngine.Input::GetKeyUpString")] static bool GetKeyUp(string k) => KeyButton(k) is { } b && Pad.Released(b);

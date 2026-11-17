@@ -409,3 +409,16 @@ have it); our data's naming screen is unchanged.
   settings, then configureMemoria.
 - Thor: the plain DLL put in place showed the message and button; Install Memoria (1411 files)
   gave back the same Assembly-CSharp.dll byte for byte, and the title took input.
+
+## Select (Active Time Events) and Unity's named buttons (0.1.16, issue 16)
+
+- Input.GetButton/GetButtonDown/GetButtonUp returned false. FF9's Input Manager buttons are named
+  after pad buttons ("JoystickButton6"), and HonoInputManager reads its joystick keys through them
+  as well as through key codes. Select (Back, joystick button 6) came only by name, so an Active
+  Time Event never opened. Named "JoystickButtonN" now reads the pad (FF9_TRACE_BUTTONS=1 logs
+  presses asked for by name).
+- A press by name counts for the first ask in a frame only: while catching up (a field loading),
+  the game runs several update loops in one frame and each saw the press, so one A during the
+  Tantalus scene's start went through several lines. With the guard the same presses step through
+  the scene exactly as before the change (checked against the old engine on the Thor's autosave in
+  that scene); A advances one line, Back does nothing in a dialog. An ATE itself was not reached.

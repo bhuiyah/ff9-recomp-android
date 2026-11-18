@@ -34,6 +34,7 @@ struct X64Cpu {
     int error;                /* set when an instruction can't be run; the call returns early */
     uint64_t steps;
     X64Hook hooks[X64_HOOKS];
+    int jit;                  /* run through x64jit.c (x64_jit_init) */
     uint32_t *hist; uint64_t hist_lo, hist_n;   /* FF9_TRACE_X64_HIST: instructions run at each address */
 };
 
@@ -42,6 +43,12 @@ enum { RAX, RCX, RDX, RBX, RSP, RBP, RSI, RDI, R8, R9, R10, R11, R12, R13, R14, 
 /* Run from c->rip until a `ret` pops X64_SENTINEL (pushed by x64_call). */
 #define X64_SENTINEL 0x00005E9715E9715EULL
 void x64_run(X64Cpu *c);
+
+/* x64jit.c: translate guest code in [lo, hi) to ARM64 as it runs (check: compare every block
+   with the interpreter). Returns 0 if no executable memory; the interpreter is used then. */
+int x64_jit_init(X64Cpu *c, uint64_t lo, uint64_t hi, int check);
+void x64_jit_run(X64Cpu *c);
+void x64_jit_stats(uint64_t *blocks, uint64_t *interpreted);
 
 /* One instruction (tests: comparing a hook with the guest code it stands in for). */
 void x64_step(X64Cpu *c);

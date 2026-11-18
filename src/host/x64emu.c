@@ -818,6 +818,7 @@ void x64_run(X64Cpu *c) {
         while (!c->error && c->rip != X64_SENTINEL) { if (c->rip - c->hist_lo < c->hist_n) c->hist[c->rip - c->hist_lo]++; step(c); c->steps++; }
         return;
     }
+    if (c->jit) { x64_jit_run(c); return; }
     while (!c->error && c->rip != X64_SENTINEL) {
         step(c);
         c->steps++;

@@ -617,3 +617,24 @@ The swirl stayed black. Three things, all needed:
   is dispatch and state traffic, not decoding. What's left is spread out: the plugin's effect-script
   dispatcher (0xe250 and its handlers), the GTE-style vertex transform (0x3e80), and more; the next real
   step is translating guest code to ARM64.
+
+### Translating the plugin to ARM64 (src/host/x64jit.c)
+
+- The player's plugin DLL is translated on the device as it runs: each basic block, the first time
+  it's reached, becomes ARM64 code (32 MB of RWX memory; if mmap refuses it the interpreter runs as
+  before). Nothing translated is stored or shipped.
+- Guest registers stay in X64Cpu (loaded/stored per instruction); in a block the five flags live in
+  w20-w24 and a flag is only computed when a later instruction or the block's end can read it.
+  Translated: moves, ALU (not adc/sbb), test, inc/dec, imul, shifts (when their flags are dead),
+  cmov/setcc, push/pop, jcc/jmp, call/ret inside the image, cbw/cwd. A block stops before anything
+  else (SSE, string ops, prefixes, indirect call/jmp, the D6 hooks) and the interpreter runs it:
+  ~21 K of ~2.4 M instructions per update on battle 957.
+- FF9_TRACE_X64_JITCHECK=1 replays every block in the interpreter from the same state (its memory
+  writes undone) and compares registers, flags, rip and written memory: 209 M blocks over a 90-round
+  battle 957 (six Meteor Counters) and 124 M more in battles 568, 922, 940 and 950, no difference.
+  FF9_TRACE_X64_NOJIT=1 turns it off; FF9_TRACE_X64_JITSTATS reports coverage.
+- Battle 957, 100 rounds, same build, interpreter vs translated, frames with an effect running:
+  SFX_Update 10.1 -> 3.2 ms (4.0 -> 1.4 ns per guest instruction), frame 25.8 -> 19.7 ms, the 20 worst
+  frames 40 -> 30 ms. What's left of those frames is mostly managed code (Memoria's mesh building,
+  our uploads and draws). More from the translator (blocks jumping straight to each other, guest
+  registers kept in host registers) could save about another 1.5 ms there.

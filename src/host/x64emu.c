@@ -622,6 +622,10 @@ static inline __attribute__((always_inline)) void step(X64Cpu *c) {
     }
     case 0xC9: c->r[RSP] = c->r[RBP]; c->r[RBP] = pop(c); break;
     case 0xCC: fail(c, "int3", start); return;
+    case 0xD6:                                     /* hook (see x64emu.h) */
+        if (*p < X64_HOOKS && c->hooks[*p]) { c->steps += c->hooks[*p](c) - 1; return; }
+        fail(c, "unknown opcode", start);
+        return;
     case 0xE2: { int64_t d = (int8_t)*p++; c->rip = (uint64_t)p; if (--c->r[RCX]) c->rip += d; return; }
     case 0xE3: { int64_t d = (int8_t)*p++; c->rip = (uint64_t)p; if (!c->r[RCX]) c->rip += d; return; }
     case 0xE8: { int32_t d; memcpy(&d, p, 4); p += 4; do_call(c, (uint64_t)p + (int64_t)d, (uint64_t)p); return; }
@@ -810,11 +814,17 @@ static inline __attribute__((always_inline)) void step(X64Cpu *c) {
 }
 
 void x64_run(X64Cpu *c) {
+    if (c->hist) {
+        while (!c->error && c->rip != X64_SENTINEL) { if (c->rip - c->hist_lo < c->hist_n) c->hist[c->rip - c->hist_lo]++; step(c); c->steps++; }
+        return;
+    }
     while (!c->error && c->rip != X64_SENTINEL) {
         step(c);
         c->steps++;
     }
 }
+
+void x64_step(X64Cpu *c) { step(c); c->steps++; }
 
 uint64_t x64_arg(X64Cpu *c, int i) {
     static const int regs[4] = {RCX, RDX, R8, R9};

@@ -595,3 +595,25 @@ The swirl stayed black. Three things, all needed:
   sfx_plugin.c). simpleperf needs <profileable android:shell="true"/> in a local build.
 - FF9_TEST_IMMORTAL=1 holds the party's HP at 9999 in battle, for late-game test battles. Battle+
   (Memoria's Battle Assistance booster) is not enough: btl_para only ignores damage that wouldn't kill.
+
+### The effect plugin's hot loops (src/host/sfx_fast.c)
+
+- SFX_Update runs only on frames where an effect plays; on those (battle 957, 100 rounds, several Meteor
+  Counters) it ran ~2.3 M guest instructions in 14.4 ms. FF9_TRACE_X64_HIST (instructions per guest
+  address) showed 56% of them in two loops: ClearOTagR at RVA 0x2d60 (4095 ordering-table entries, each
+  given the 24-bit address of the one before by searching the plugin's region table: 44%) and the walk
+  back along those addresses at 0x1850 (12%).
+- Both run as C now: the loop's first instruction becomes D6 <n> (not an x86-64 instruction; x64emu runs
+  hook n), and the hook leaves the registers, flags and memory the guest code would, then continues where
+  it would. Only if the loop's code bytes hash to the known DLL's; otherwise everything is interpreted.
+  FF9_TRACE_X64_CHECK=1 runs each call both ways and compares (over 1 M loop runs on the Thor, including
+  Meteor, no difference); FF9_TRACE_X64_SLOW=1 turns the hooks off.
+- Same build, hooks off vs on, frames with an effect running: SFX_Update 14.4 -> 9.9 ms, the frame
+  29.5 -> 25.6 ms; the 20 worst frames 43 -> 41 ms.
+- Tried and not kept: a decoded-instruction cache (each common instruction decoded once into a 48-byte
+  record, run from it after). It matched the interpreter on 940 M instructions but was no faster: with
+  simpleperf, 30% of x64_run went to the load of the cache record (the records don't fit the CPU caches
+  the way the few KB of hot guest code bytes do) and 16% to the dispatch branch. The interpreter's time
+  is dispatch and state traffic, not decoding. What's left is spread out: the plugin's effect-script
+  dispatcher (0xe250 and its handlers), the GTE-style vertex transform (0x3e80), and more; the next real
+  step is translating guest code to ARM64.

@@ -16,6 +16,13 @@ typedef struct X64Cpu X64Cpu;
 /* returns 1 if `target` is host code and was called (result left in rax/xmm0), 0 otherwise */
 typedef int (*X64HostCall)(X64Cpu *c, uint64_t target);
 
+/* Native code standing in for a stretch of guest code: the guest bytes there are D6 <n> (D6 is
+   not an x86-64 instruction), which runs hooks[n]. The hook updates the state as the guest
+   code would, sets rip to where the guest continues, and returns how many guest instructions
+   it stood in for (counted in `steps`). */
+typedef uint64_t (*X64Hook)(X64Cpu *c);
+#define X64_HOOKS 4
+
 struct X64Cpu {
     uint64_t r[16];           /* rax rcx rdx rbx rsp rbp rsi rdi r8..r15 */
     uint64_t rip;
@@ -26,6 +33,8 @@ struct X64Cpu {
     X64HostCall host;
     int error;                /* set when an instruction can't be run; the call returns early */
     uint64_t steps;
+    X64Hook hooks[X64_HOOKS];
+    uint32_t *hist; uint64_t hist_lo, hist_n;   /* FF9_TRACE_X64_HIST: instructions run at each address */
 };
 
 enum { RAX, RCX, RDX, RBX, RSP, RBP, RSI, RDI, R8, R9, R10, R11, R12, R13, R14, R15 };
@@ -33,6 +42,9 @@ enum { RAX, RCX, RDX, RBX, RSP, RBP, RSI, RDI, R8, R9, R10, R11, R12, R13, R14, 
 /* Run from c->rip until a `ret` pops X64_SENTINEL (pushed by x64_call). */
 #define X64_SENTINEL 0x00005E9715E9715EULL
 void x64_run(X64Cpu *c);
+
+/* One instruction (tests: comparing a hook with the guest code it stands in for). */
+void x64_step(X64Cpu *c);
 
 /* Call guest code at `addr` with the Windows x64 convention: integer args in rcx/rdx/r8/r9,
    the rest on the stack; `fargs` (may be NULL) gives xmm0..3 for float/double positions.

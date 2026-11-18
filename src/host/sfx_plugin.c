@@ -18,6 +18,7 @@
 #define EXPORT __attribute__((visibility("default")))
 
 static X64Cpu cpu;
+void sfx_fast_install(X64Cpu *c, uint8_t *image, size_t image_size);
 static uint8_t *image;
 static size_t image_size;
 static uint8_t *stubs;            /* one 16-byte slot per import: the address the IAT points to */
@@ -294,7 +295,9 @@ static int load(void) {
     uint64_t ok = x64_call(&cpu, (uint64_t)image + entry, 3, args, NULL);
     if (cpu.error || !(uint32_t)ok) { fprintf(stderr, "sfx plugin: DllMain failed\n"); return 0; }
     fprintf(stdout, "sfx plugin: loaded (%zu KB image, %d imports, %llu steps to start)\n", image_size >> 10, nimports, (unsigned long long)cpu.steps);
+    sfx_fast_install(&cpu, image, image_size);
     loaded = 1;
+    if (getenv("FF9_TRACE_X64_HIST")) { cpu.hist_lo = (uint64_t)image; cpu.hist_n = image_size; cpu.hist = calloc(image_size, 4); }
     return 1;
 }
 
@@ -320,7 +323,26 @@ EXPORT void SFX_StartPlungeCamera(void *btlseq, int len, int camOffset, int proj
 }
 EXPORT void SFX_SkipCameraAnimation(int skip) { uint64_t a[1] = {(uint64_t)(int64_t)skip}; run(E_SkipCameraAnimation, 1, a, NULL); }
 EXPORT void SFX_InitBattle(void *param) { uint64_t a[1] = {(uint64_t)param}; run(E_InitBattle, 1, a, NULL); }
-EXPORT int SFX_Update(int *frameIndex) { uint64_t a[1] = {(uint64_t)frameIndex}; return (int)(run(E_Update, 1, a, NULL) & 0xff); }
+/* FF9_TRACE_X64_HIST: every 300 updates, the 400 guest addresses that ran the most instructions
+   (as addresses at the DLL's preferred base, to match a disassembly): how sfx_fast.c's loops
+   were found. */
+static void hist_dump(void) {
+    static int calls;
+    if (!cpu.hist || ++calls % 300) return;
+    uint64_t tot = 0;
+    for (uint64_t i = 0; i < cpu.hist_n; i++) tot += cpu.hist[i];
+    printf("x64hist total %llu\n", (unsigned long long)tot);
+    for (int k = 0; k < 400; k++) {
+        uint64_t bi = 0; uint32_t bv = 0;
+        for (uint64_t i = 0; i < cpu.hist_n; i++) if (cpu.hist[i] > bv) { bv = cpu.hist[i]; bi = i; }
+        if (!bv) break;
+        printf("x64hist %llx %u\n", (unsigned long long)(bi + 0x180000000ULL), bv);
+        cpu.hist[bi] = 0;
+    }
+    memset(cpu.hist, 0, cpu.hist_n * 4);
+    fflush(stdout);
+}
+EXPORT int SFX_Update(int *frameIndex) { hist_dump(); uint64_t a[1] = {(uint64_t)frameIndex}; return (int)(run(E_Update, 1, a, NULL) & 0xff); }
 EXPORT void SFX_LateUpdate(void) { run(E_LateUpdate, 0, NULL, NULL); }
 EXPORT void *SFX_UpdateCamera(int isDebug) {
     uint64_t a[1] = {(uint64_t)(int64_t)isDebug};

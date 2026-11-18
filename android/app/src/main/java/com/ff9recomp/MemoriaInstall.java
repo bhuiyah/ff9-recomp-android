@@ -172,8 +172,20 @@ final class MemoriaInstall {
             String merged = mergeIni(new String(Files.readAllBytes(ini.toPath()), StandardCharsets.ISO_8859_1),
                     new String(oldIni, StandardCharsets.ISO_8859_1));
             Settings.writeIni(ini, merged.getBytes(StandardCharsets.ISO_8859_1));
+        } else if (ini.isFile()) {
+            Settings.writeIni(ini, newIniDefaults(new String(Files.readAllBytes(ini.toPath()), StandardCharsets.ISO_8859_1))
+                    .getBytes(StandardCharsets.ISO_8859_1));
         }
         Log.i(TAG, "installed Memoria " + VERSION + ": " + n[0] + " files");
+    }
+
+    /**
+     * A Memoria.ini new to this game (no player's settings yet) with this app's own defaults: the
+     * battle swirl plays (BattleSwirlFrames 115, the PlayStation's and Steam's; Memoria's 0 skips it,
+     * and players took that for a bug, GitHub issue 24). An imported game's ini is left as it was.
+     */
+    static String newIniDefaults(String ini) {
+        return ini.replaceFirst("(?m)^BattleSwirlFrames[ \\t]*=[ \\t]*0(?=[ \\t]*\\r?$)", "BattleSwirlFrames = 115");
     }
 
     /**

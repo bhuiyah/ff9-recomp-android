@@ -543,3 +543,13 @@ The swirl stayed black. Three things, all needed:
   the panels again when the game is on another display than they were placed for
   (onConfigurationChanged; on the Thor a move recreates the activity, which places them anew).
   Thor: am display move-stack of the game's task to 0 and back: panels followed, game kept going.
+
+## The battle swirl plays on new installs (0.1.24, issue 24)
+
+- Memoria ships BattleSwirlFrames = 0 (skip the swirl); players compared with the game without
+  Memoria and took it for a bug. MemoriaInstall.install: when the game had no Memoria.ini (a Steam
+  download, or Install Memoria on a game without Memoria), newIniDefaults sets it to 115 (PlayStation,
+  Steam). An existing or imported Memoria.ini keeps its value; the launcher's "Skip the battle swirl"
+  changes it either way.
+- Tested on the Thor with TestControl STEAM_DOWNLOAD op memoria into scratch folders: an empty one
+  got 115, one holding a copy of the player's Memoria.ini (0) kept 0. The regex keeps CRLF endings.

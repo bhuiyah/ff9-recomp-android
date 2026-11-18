@@ -45,6 +45,8 @@ public static class Unloader {
         var sw = Stopwatch.StartNew();
         int freed = 0, rounds = 0;
         long texBytes = 0;
+        Registry.Hiding = true;
+        try {
         for (; rounds < 3; rounds++) {
             Pipeline.ForgetDeadMaterials();
             var list = new List<(NObject n, GCHandle h)>();
@@ -75,6 +77,8 @@ public static class Unloader {
             }
             if (!holders || freed == before) { rounds++; break; }
         }
+        } finally { Registry.Hiding = false; }
+        Registry.Compact();
         Pipeline.ForgetDeadMaterials();
         if (freed > 0) GC.Collect();
         Log.Info($"unloaded {freed} unused assets ({texBytes >> 20} MB of textures) in {rounds} rounds, {sw.ElapsedMilliseconds} ms; objects {Registry.Count}");

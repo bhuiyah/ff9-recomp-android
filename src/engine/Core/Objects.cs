@@ -74,13 +74,45 @@ public static class Registry {
     static NObject?[] objs = new NObject?[1 << 16];
     static int next = 2;            // ids: even, nonzero
 
+    static Registry() {
+        // FF9_TEST_REGISTRY_PAD=n: start with n used ids, as after a long session.
+        if (int.TryParse(Environment.GetEnvironmentVariable("FF9_TEST_REGISTRY_PAD"), out int pad) && pad > 0) {
+            next += 2 * pad;
+            int need = objs.Length;
+            while (need <= next >> 1) need *= 2;
+            Array.Resize(ref objs, need);
+        }
+    }
+
+    // The records in id order (creation order), so All and the Find calls built on it walk the
+    // objects there are, not every id ever given out: ids are never reused (Unity's aren't), and
+    // after an hour of play there were 570,000 ids for 40,000 objects. GameObject.Find and
+    // FindObjectsOfType, called by battle scripts every frame, walked them all (GitHub issue 33).
+    // Removed records stay until Compact; the table says which are current.
+    static List<NObject> list = new(1 << 16);
+    static int compactedAt;
+    /// Set while Core/Unloader.cs has records out of the table (they may come back).
+    internal static bool Hiding;
+
     public static IEnumerable<NObject> All {
-        get { for (int i = 2; i < next; i += 2) if (objs[i >> 1] is { } o) yield return o; }
+        get {
+            var l = list;   // Compact makes a new list, so a walk in progress isn't disturbed
+            for (int i = 0; i < l.Count; i++) { var o = l[i]; if (objs[o.Id >> 1] == o) yield return o; }
+        }
+    }
+
+    /// Drops removed records from the walk list (not while records are hidden).
+    internal static void Compact() {
+        if (Hiding) return;
+        var l = new List<NObject>(Math.Max(list.Count / 2, 1 << 16));
+        foreach (var o in list) if (objs[o.Id >> 1] == o) l.Add(o);
+        list = l;
+        compactedAt = l.Count;
     }
 
     /// "live/ever" object counts, for memory reports
     public static string Count {
-        get { int live = 0; for (int i = 2; i < next; i += 2) if (objs[i >> 1] != null) live++; return $"{live}/{next >> 1}"; }
+        get { int live = 0; foreach (var o in list) if (objs[o.Id >> 1] == o) live++; return $"{live}/{next >> 1}"; }
     }
 
     public static T Add<T>(T n, UObject? managed) where T : NObject {
@@ -89,6 +121,8 @@ public static class Registry {
         int slot = n.Id >> 1;
         if (slot >= objs.Length) Array.Resize(ref objs, objs.Length * 2);
         objs[slot] = n;
+        list.Add(n);
+        if (list.Count > 2 * compactedAt + 65536) Compact();
         if (managed is not null) Bind(n, managed);
         return n;
     }

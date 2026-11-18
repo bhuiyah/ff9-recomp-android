@@ -553,3 +553,18 @@ The swirl stayed black. Three things, all needed:
   changes it either way.
 - Tested on the Thor with TestControl STEAM_DOWNLOAD op memoria into scratch folders: an empty one
   got 115, one holding a copy of the player's Memoria.ini (0) kept 0. The regex keeps CRLF endings.
+
+## Object lookups slowed with play time (issue 33)
+
+- Registry ids are never reused (Unity's instance ids aren't), and Registry.All walked every id
+  ever given out. The reporter's log after ~45 minutes: 40,000 objects, 567,000 ids, unloads
+  167 -> 740 ms. Battle scripts call GameObject.Find / FindObjectsOfType every frame
+  (HonoluluBattleMain.Update, SceneDirector.Update), and each walked the whole table.
+- Registry keeps its records in a list in id order; All walks that (skipping removed ones), and
+  Compact drops removed records at the end of each unload and when the list doubles. Not while
+  the Unloader has records hidden (Registry.Hiding).
+- FF9_TEST_REGISTRY_PAD=n starts with n ids used. Thor, battle 336, FF9_TRACE_PROFILE=120:
+  update 3.7 ms per frame unpadded; 6.1 ms with 550000 (HonoluluBattleMain.Update 1.0 -> 2.65,
+  SceneDirector.Update 0.8 -> 1.8); 4.0 ms with the fix. FF9_TEST_FIELDS: unloads stay ~110 ms.
+- The same report: thermal status 3 (severe) on an S22 Ultra (Snapdragon 8 Gen 1); 18-26 FPS in
+  its battle screenshots is probably mostly throttling.

@@ -65,6 +65,7 @@ public class NTransform : NComponent {
 
     public void SetParent(NTransform? parent, bool worldPositionStays) {
         if (parent == Parent) return;
+        Icalls.GameObjectIcalls.HierarchyVersion++;
         for (var p = parent; p != null; p = p.Parent) if (p == this) return;
         Vector3 wp = default; Quaternion wr = default; Vector3 ws = default;
         if (worldPositionStays) { wp = Position; wr = Rotation; ws = LossyScale; }

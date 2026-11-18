@@ -182,6 +182,7 @@ public static class Player {
         Companion.Tick();
         UiSounds.Tick();
         MusicTrace.Tick();
+        ImmortalTest.Tick();
         HarmonyTest.Tick();
         TestLoad.Tick();
         TextInput.Tick();
@@ -286,6 +287,7 @@ public static class Player {
 
     /// Activation changes on a hierarchy: OnEnable/Awake or OnDisable for behaviours below.
     public static void HierarchyActivationChanged(NGameObject go) {
+        Icalls.GameObjectIcalls.HierarchyVersion++;
         var list = new List<NMonoBehaviour>();
         Collect(go.Transform, list);
         foreach (var b in list) {
@@ -379,6 +381,12 @@ public static class Prof {
     static long total, worst;
     static int frames;
     public static bool On => every > 0;
+    // time in chosen engine calls (FF9_TRACE_PROFILE): bucket -> ticks, calls
+    public static readonly string[] CallNames = { "mesh.Clear", "mesh.vertices", "mesh.colors32", "mesh.uv", "mesh.triangles", "mat.shader", "Camera.main", "GameObject.Find", "rain", "SFX.PostRender", "SFXChannel.Render", "actions.Render", "RenderEventSFX" };
+    public static readonly long[] CallTicks = new long[13], CallCount = new long[13];
+    public static long T0() => every > 0 ? Stopwatch.GetTimestamp() : 0;
+    [System.Runtime.InteropServices.DllImport("__Internal")] static extern unsafe int ff9_sfx_prof(ulong* o, int n);
+    public static void Call(int i, long t0) { if (t0 == 0) return; CallTicks[i] += Stopwatch.GetTimestamp() - t0; CallCount[i]++; }
     // the scripts' messages (Update, LateUpdate...) that took the most time
     static readonly Dictionary<MethodInfo, long> scripts = new();
     // the frame's parts: input, fixed steps, starts+Update, coroutines, animation, LateUpdate,
@@ -400,6 +408,19 @@ public static class Prof {
         double ms(long t) => t * 1000.0 / Stopwatch.Frequency / frames;
         Log.Info($"prof parts: gather+sort {ms(Gfx.Pipeline.ProfGather):F2}, bind {ms(Gfx.Pipeline.ProfBind):F2}, draw {ms(Gfx.Pipeline.ProfDraw):F2} ms");
         Gfx.Pipeline.ProfGather = Gfx.Pipeline.ProfBind = Gfx.Pipeline.ProfDraw = 0;
+        Log.Info($"prof now: {Gfx.Pipeline.ProfNowCalls / (double)frames:F1} calls, {Gfx.Pipeline.ProfNowVerts / (double)frames:F0} verts per frame; bind {ms(Gfx.Pipeline.ProfNowBind):F2}, upload {ms(Gfx.Pipeline.ProfNowUpload):F2}, draw {ms(Gfx.Pipeline.ProfNowDraw):F2} ms; texture uploads {Gfx.NTexture.ProfUploads / (double)frames:F1}, {ms(Gfx.NTexture.ProfUpload):F2} ms; ReadPixels {Gfx.NTexture.ProfReads / (double)frames:F1}, {ms(Gfx.NTexture.ProfRead):F2} ms");
+        unsafe {
+            ulong* o = stackalloc ulong[16];
+            int k = 0;
+            try { k = ff9_sfx_prof(o, 16); } catch (Exception) { }
+            if (k >= 16) {
+                double ns(ulong v) => v / 1e6 / frames;
+                Log.Info($"prof sfx plugin: Update {ns(o[4]):F2}, LateUpdate {ns(o[5]):F2}, UpdateCamera {ns(o[6]):F2}, BeginRender {ns(o[11]):F2}, GetPrim {ns(o[12]):F2} ms; game callbacks {o[14] / (double)frames:F0} taking {ns(o[13]):F2} ms; {o[15] / (double)frames / 1e6:F2} M instructions per frame");
+            }
+        }
+        { var sbc = new System.Text.StringBuilder("prof calls:"); for (int ci = 0; ci < CallNames.Length; ci++) { sbc.Append($" {CallNames[ci]} {CallCount[ci] / (double)frames:F1}x {ms(CallTicks[ci]):F2}"); CallTicks[ci] = CallCount[ci] = 0; } Log.Info(sbc.ToString()); }
+        Gfx.Pipeline.ProfNowBind = Gfx.Pipeline.ProfNowUpload = Gfx.Pipeline.ProfNowDraw = Gfx.Pipeline.ProfNowCalls = Gfx.Pipeline.ProfNowVerts = 0;
+        Gfx.NTexture.ProfUpload = Gfx.NTexture.ProfUploads = Gfx.NTexture.ProfRead = Gfx.NTexture.ProfReads = 0;
         if (scripts.Count > 0) {
             var top = new List<KeyValuePair<MethodInfo, long>>(scripts);
             top.Sort((a, b) => b.Value.CompareTo(a.Value));

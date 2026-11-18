@@ -487,6 +487,8 @@ public static class Pipeline {
     }
 
     public static long ProfBind, ProfDraw, ProfGather;
+    // DrawMeshNow (Material.SetPass + Graphics.DrawMeshNow, GL immediate mode): bind, mesh upload, draw, calls
+    public static long ProfNowBind, ProfNowUpload, ProfNowDraw, ProfNowCalls, ProfNowVerts;
     static int epoch;
     static int drawCount;
     public static int LastDrawCount;
@@ -788,10 +790,17 @@ public static class Pipeline {
     }
 
     public static void DrawMeshNow(NMesh mesh, Matrix4x4 m, int sub) {
+        long t0 = Core.Prof.On ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         if (!BindCurrentPass(m)) return;
+        long t1 = t0 != 0 ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         mesh.Upload();
+        long t2 = t0 != 0 ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         if (sub < 0) for (int i = 0; i < mesh.SubMeshes.Count; i++) mesh.Draw(i);
         else mesh.Draw(sub);
+        if (t0 != 0) {
+            ProfNowBind += t1 - t0; ProfNowUpload += t2 - t1; ProfNowDraw += System.Diagnostics.Stopwatch.GetTimestamp() - t2;
+            ProfNowCalls++; ProfNowVerts += mesh.Vertices?.Length ?? 0;
+        }
     }
 
     // immediate mode

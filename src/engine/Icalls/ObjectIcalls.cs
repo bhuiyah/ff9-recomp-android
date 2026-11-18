@@ -29,6 +29,7 @@ static class ObjectIcalls {
         // Unity: a component's name is its GameObject's; keep the copies in step
         var o = Registry.Of<NObject>(self);
         var g = o as NGameObject ?? (o as NComponent)?.GameObject;
+        GameObjectIcalls.HierarchyVersion++;
         o.Name = v ?? "";
         if (g == null) return;
         g.Name = o.Name;
@@ -151,8 +152,22 @@ public static class GameObjectIcalls {
     }
 
     [Icall("UnityEngine.GameObject::Find")]
-    static GameObject? Find(string name) {
+    static GameObject? Find(string name) { long pt = Core.Prof.T0(); var r = FindImpl(name); Core.Prof.Call(7, pt); return r; }
+    // GameObject.Find by plain name: the last answer is kept while it is still the first match. Ids only
+    // grow, so a newer object can't come before it; activations, renames and reparenting (which could
+    // bring an older object in) bump HierarchyVersion and empty the cache. Battle effects look up
+    // "Battle Camera" several times a frame, and each scan walked every object.
+    public static int HierarchyVersion;
+    static readonly Dictionary<string, NGameObject> findCache = new();
+    static int findCacheVersion;
+
+    static GameObject? FindImpl(string name) {
         if (string.IsNullOrEmpty(name)) return null;
+        if (findCacheVersion != HierarchyVersion) { findCache.Clear(); findCacheVersion = HierarchyVersion; }
+        if (!name.Contains('/') && findCache.TryGetValue(name, out var hit)) {
+            if (hit.Managed != null && Registry.ById(hit.Id) == hit && hit.Name == name && hit.ActiveInHierarchy) return (GameObject)hit.Managed;
+            findCache.Remove(name);
+        }
         if (name.Contains('/')) {
             string p = name.TrimStart('/');
             string first = p.Split('/')[0];
@@ -164,7 +179,7 @@ public static class GameObjectIcalls {
             return null;
         }
         foreach (var n in Registry.All)
-            if (n is NGameObject g && !g.IsAsset && g.Name == name && g.ActiveInHierarchy) return (GameObject)g.Managed!;
+            if (n is NGameObject g && !g.IsAsset && g.Name == name && g.ActiveInHierarchy) { findCache[name] = g; return (GameObject)g.Managed!; }
         return null;
     }
 

@@ -40,8 +40,15 @@ public class NTexture : NObject {
 
     static readonly string? dumpTex = Environment.GetEnvironmentVariable("FF9_DUMP_TEX");
 
+    public static long ProfUpload, ProfUploads, ProfRead, ProfReads;
+
     public unsafe void Upload() {
         if (!Device.Ready) return;
+        long pt0 = Core.Prof.On ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+        try { UploadImpl(); } finally { if (pt0 != 0) { ProfUpload += System.Diagnostics.Stopwatch.GetTimestamp() - pt0; ProfUploads++; } }
+    }
+
+    unsafe void UploadImpl() {
         if (dumpTex != null && Pixels == null) Log.Once("nopix" + Id, $"texture #{Id} '{Name}' {Width}x{Height} {Format} uploaded without pixels (asset={IsAsset})");
         if (dumpTex != null && Pixels != null && (Name.Contains(dumpTex) || dumpTex == "#" + Id))
             Png.Write($"/data/local/tmp/ff9/shots/tex_{Id}_{Name.Replace('/', '_')}_{Format}.png", Pixels, Width, Height, flipY: true);
@@ -691,6 +698,12 @@ static class TextureIcalls {
 
     [Icall("UnityEngine.Texture2D::INTERNAL_CALL_ReadPixels")]
     static unsafe void ReadPixels(Texture2D tex, ref Rect src, int dx, int dy, bool mips) {
+        long pt0 = Core.Prof.On ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+        try { ReadPixelsImpl(tex, ref src, dx, dy); }
+        finally { if (pt0 != 0) { NTexture.ProfRead += System.Diagnostics.Stopwatch.GetTimestamp() - pt0; NTexture.ProfReads++; } }
+    }
+
+    static unsafe void ReadPixelsImpl(Texture2D tex, ref Rect src, int dx, int dy) {
         var t = T(tex);
         t.EnsurePixels();
         int w = (int)src.width, h = (int)src.height;

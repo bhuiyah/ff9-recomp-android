@@ -72,6 +72,20 @@ static const char *export_names[E_COUNT] = {
     "SFX_Play", "SFX_BeginRender", "SFX_GetPrim"};
 static uint64_t exports[E_COUNT];
 
+/* profiling (read by the engine's FF9_TRACE_PROFILE report): ns in each export (the game's own
+   callbacks included), ns and count of those callbacks, x86-64 instructions run */
+static uint64_t prof_ns[E_COUNT], prof_cb_ns, prof_cb_n, prof_steps;
+static inline uint64_t now_ns(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec; }
+EXPORT int ff9_sfx_prof(uint64_t *out, int n) {
+    int k = 0;
+    for (int e = 0; e < E_COUNT && k < n; e++) { out[k++] = prof_ns[e]; prof_ns[e] = 0; }
+    if (k < n) out[k++] = prof_cb_ns;
+    if (k < n) out[k++] = prof_cb_n;
+    if (k < n) out[k++] = prof_steps;
+    prof_cb_ns = prof_cb_n = prof_steps = 0;
+    return k;
+}
+
 static inline uint32_t u32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
 static inline uint16_t u16(const uint8_t *p) { uint16_t v; memcpy(&v, p, 2); return v; }
 static inline uint64_t u64(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v; }
@@ -166,7 +180,9 @@ static int host_call(X64Cpu *c, uint64_t target) {
     if (target >= (uint64_t)image && target < (uint64_t)image + image_size) return 0;   /* guest code */
     /* a native function pointer (the game's SFX callback): int f(int, int, int, int, int, void *) */
     typedef int (*Cb)(int, int, int, int, int, void *);
+    uint64_t t0 = now_ns();
     int v = ((Cb)target)((int)x64_arg(c, 0), (int)x64_arg(c, 1), (int)x64_arg(c, 2), (int)x64_arg(c, 3), (int)x64_arg(c, 4), (void *)x64_arg(c, 5));
+    prof_cb_ns += now_ns() - t0; prof_cb_n++;
     c->r[RAX] = (uint32_t)v;
     return 1;
 }
@@ -285,7 +301,9 @@ static int load(void) {
 static uint64_t run(int e, int nargs, const uint64_t *args, const XmmReg *fargs) {
     if (!load()) return 0;
     cpu.error = 0;
+    uint64_t t0 = now_ns(), s0 = cpu.steps;
     uint64_t r = x64_call(&cpu, exports[e], nargs, args, fargs);
+    prof_ns[e] += now_ns() - t0; prof_steps += cpu.steps - s0;
     if (cpu.error) {
         fprintf(stderr, "sfx plugin: %s stopped early\n", export_names[e]);
         cpu.error = 0;

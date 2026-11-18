@@ -1,6 +1,9 @@
 /* x64emu: see x64emu.h. One instruction per step(): prefixes, REX, ModRM/SIB, then the
    opcode. Flags are computed eagerly (CF ZF SF OF PF; AF is not kept). */
 #include "x64emu.h"
+/* Speed: step() and its decode/flag helpers are forced inline into x64_run's loop, so each
+   instruction doesn't pay a call that saves and restores ten registers (a heavy battle effect
+   such as Meteor runs ~1.5 M instructions a frame). */
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -51,7 +54,7 @@ static inline void szp(X64Cpu *c, uint64_t r, int sz) {
     c->sf = (r & sbit(sz)) != 0;
     c->pf = !__builtin_parity((unsigned)(r & 0xff));
 }
-static uint64_t add_f(X64Cpu *c, uint64_t a, uint64_t b, int cin, int sz) {
+static inline __attribute__((always_inline)) uint64_t add_f(X64Cpu *c, uint64_t a, uint64_t b, int cin, int sz) {
     uint64_t m = mask(sz);
     a &= m; b &= m;
     uint64_t r = (a + b + cin) & m;
@@ -61,7 +64,7 @@ static uint64_t add_f(X64Cpu *c, uint64_t a, uint64_t b, int cin, int sz) {
     szp(c, r, sz);
     return r;
 }
-static uint64_t sub_f(X64Cpu *c, uint64_t a, uint64_t b, int cin, int sz) {
+static inline __attribute__((always_inline)) uint64_t sub_f(X64Cpu *c, uint64_t a, uint64_t b, int cin, int sz) {
     uint64_t m = mask(sz);
     a &= m; b &= m;
     uint64_t r = (a - b - cin) & m;
@@ -71,9 +74,9 @@ static uint64_t sub_f(X64Cpu *c, uint64_t a, uint64_t b, int cin, int sz) {
     szp(c, r, sz);
     return r;
 }
-static uint64_t logic_f(X64Cpu *c, uint64_t r, int sz) { c->cf = c->of = 0; szp(c, r, sz); return r & mask(sz); }
+static inline __attribute__((always_inline)) uint64_t logic_f(X64Cpu *c, uint64_t r, int sz) { c->cf = c->of = 0; szp(c, r, sz); return r & mask(sz); }
 
-static int cond(X64Cpu *c, int cc) {
+static inline __attribute__((always_inline)) int cond(X64Cpu *c, int cc) {
     int r;
     switch (cc >> 1) {
     case 0: r = c->of; break;
@@ -88,7 +91,7 @@ static int cond(X64Cpu *c, int cc) {
     return (cc & 1) ? !r : r;
 }
 
-static uint64_t alu(X64Cpu *c, int op, uint64_t a, uint64_t b, int sz) {
+static inline __attribute__((always_inline)) uint64_t alu(X64Cpu *c, int op, uint64_t a, uint64_t b, int sz) {
     switch (op) {
     case 0: return add_f(c, a, b, 0, sz);
     case 1: return logic_f(c, a | b, sz);
@@ -147,7 +150,7 @@ typedef struct {
 } Ins;
 
 /* ModRM at p; `imm` = bytes of immediate that follow (for RIP-relative). Returns the byte after the ModRM/SIB/disp. */
-static uint8_t *modrm(X64Cpu *c, uint8_t *p, Ins *in, int imm) {
+static inline __attribute__((always_inline)) uint8_t *modrm(X64Cpu *c, uint8_t *p, Ins *in, int imm) {
     uint8_t m = *p++;
     in->mod = m >> 6;
     in->reg = ((m >> 3) & 7) | ((in->rex & 4) << 1);
@@ -174,8 +177,8 @@ static uint8_t *modrm(X64Cpu *c, uint8_t *p, Ins *in, int imm) {
     in->addr = a;
     return p;
 }
-static inline uint64_t getrm(X64Cpu *c, Ins *in, int sz) { return in->isreg ? getr(c, in->rm, sz, in->rex) : rd(in->addr, sz); }
-static inline void setrm(X64Cpu *c, Ins *in, int sz, uint64_t v) { if (in->isreg) setr(c, in->rm, sz, in->rex, v); else wr(in->addr, sz, v); }
+static inline __attribute__((always_inline)) uint64_t getrm(X64Cpu *c, Ins *in, int sz) { return in->isreg ? getr(c, in->rm, sz, in->rex) : rd(in->addr, sz); }
+static inline __attribute__((always_inline)) void setrm(X64Cpu *c, Ins *in, int sz, uint64_t v) { if (in->isreg) setr(c, in->rm, sz, in->rex, v); else wr(in->addr, sz, v); }
 static inline uint64_t imm(uint8_t **pp, int sz) {
     uint8_t *p = *pp; uint64_t v;
     switch (sz) {
@@ -447,7 +450,7 @@ static void cpuid(X64Cpu *c) {
     c->r[RAX] = a; c->r[RBX] = b; c->r[RCX] = cc; c->r[RDX] = d;
 }
 
-static void step(X64Cpu *c) {
+static inline __attribute__((always_inline)) void step(X64Cpu *c) {
     uint8_t *start = (uint8_t *)c->rip, *p = start;
     Ins in;
     memset(&in, 0, sizeof in);

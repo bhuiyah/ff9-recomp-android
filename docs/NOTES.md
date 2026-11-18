@@ -568,3 +568,30 @@ The swirl stayed black. Three things, all needed:
   SceneDirector.Update 0.8 -> 1.8); 4.0 ms with the fix. FF9_TEST_FIELDS: unloads stay ~110 ms.
 - The same report: thermal status 3 (severe) on an S22 Ultra (Snapdragon 8 Gen 1); 18-26 FPS in
   its battle screenshots is probably mostly throttling.
+
+## Heavy battle effects: frame drops during Meteor (issue 33)
+
+- Behemoth's Meteor Counter (battle 957, Memoria) on the Thor went to 14-20 FPS. FF9_TRACE_PROFILE showed
+  BattleMapCameraController.OnPostRender at ~50 ms a frame. Meteor plays in Memoria's SFXDataMesh.Runtime
+  mode: each frame runs the game's effect plugin (SFX_Update, x86-64 in x64emu) and rebuilds ~16 meshes
+  (~200,000 vertices) drawn with Material.SetPass + Graphics.DrawMeshNow.
+- Fixed in the engine:
+  - Mesh.vertices/triangles recomputed bounds on every set (~14 ms); bounds are now computed when read.
+  - NMesh.Upload allocated a new ~800 KB vertex array per upload (12 MB of large objects a frame, 2-3
+    full GCs per 30 frames); it now reuses one staging array and its index buffers.
+  - GameObject.Find("Battle Camera") scanned every object several times a frame; plain-name lookups are
+    cached while the answer is still the first match (GameObjectIcalls.HierarchyVersion, bumped by
+    activation changes, renames and reparenting).
+  - x64emu: step() and its decode/flag helpers forced inline into the run loop (8.7 -> 7.0 ns per
+    instruction). A lazy parity flag made no measurable difference and was not kept.
+- Worst 30-frame windows of Meteor on the Thor: 64 ms -> ~25 ms a frame (16 -> ~40 FPS); field and world
+  map unchanged (60 FPS). What is left: SFX_Update ~10 ms (~1.3 M guest instructions a frame), Memoria's
+  managed mesh building ~5 ms, uploads/draws ~3 ms. Reaching 60 during Meteor would need a faster x64emu
+  (pre-decoded or translated code).
+- Profiling added (FF9_TRACE_PROFILE): "prof now" (DrawMeshNow bind/upload/draw, vertices, texture uploads,
+  ReadPixels), "prof calls" (mesh setters, Material.shader, Camera.main, GameObject.Find and
+  OnPostRender's steps, which Native/ProfPostRender.cs splits by replacing it with the same steps),
+  "prof sfx plugin" (time in each plugin export, game callbacks, guest instructions; ff9_sfx_prof in
+  sfx_plugin.c). simpleperf needs <profileable android:shell="true"/> in a local build.
+- FF9_TEST_IMMORTAL=1 holds the party's HP at 9999 in battle, for late-game test battles. Battle+
+  (Memoria's Battle Assistance booster) is not enough: btl_para only ignores damage that wouldn't kill.

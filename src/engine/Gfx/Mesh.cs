@@ -26,7 +26,11 @@ public sealed class NMesh : NObject, ICloneable {
     public List<SubMeshData> SubMeshes = new() { new SubMeshData() };
     public BoneWeight[]? BoneWeights;
     public Matrix4x4[]? BindPoses;
-    public Bounds Bounds;
+    // computed when first read after the vertices or triangles change (SFX meshes are rebuilt and
+    // drawn with DrawMeshNow many times a frame and never ask for them)
+    Bounds bounds;
+    public bool BoundsStale;
+    public Bounds Bounds { get { if (BoundsStale) RecalculateBounds(); return bounds; } set { bounds = value; BoundsStale = false; } }
     public bool Dirty = true, BoundsSet;
     public uint Vbo, Vao;
     public uint[] Ibo = Array.Empty<uint>();
@@ -55,13 +59,14 @@ public sealed class NMesh : NObject, ICloneable {
     }
 
     public void RecalculateBounds() {
-        if (Vertices.Length == 0) { Bounds = new Bounds(); return; }
+        BoundsStale = false;
+        if (Vertices.Length == 0) { bounds = new Bounds(); return; }
         Vector3 mn = Vertices[0], mx = Vertices[0];
         foreach (var v in Vertices) {
             mn = new Vector3(Math.Min(mn.x, v.x), Math.Min(mn.y, v.y), Math.Min(mn.z, v.z));
             mx = new Vector3(Math.Max(mx.x, v.x), Math.Max(mx.y, v.y), Math.Max(mx.z, v.z));
         }
-        Bounds = new Bounds(new Vector3((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, (mn.z + mx.z) / 2), new Vector3(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z));
+        bounds = new Bounds(new Vector3((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, (mn.z + mx.z) / 2), new Vector3(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z));
     }
 
     // GPU layout (interleaved): pos3 f, normal3 f, color4 ub, uv0 2f, uv1 2f, tangent4 f  = 64 bytes
@@ -72,6 +77,7 @@ public sealed class NMesh : NObject, ICloneable {
     struct GpuVertex { public Vector3 P, N; public Color32 C; public Vector2 T0, T1; public Vector4 Tan; public float Pad; }   // 64 bytes
 
     static readonly bool traceVao = Environment.GetEnvironmentVariable("FF9_TRACE_VAO") != null;
+    static GpuVertex[] staging = new GpuVertex[1024];
 
     public unsafe void Upload(Vector3[]? skinnedPos = null, Vector3[]? skinnedNormals = null) {
         if (!Dirty && skinnedPos == null && Vbo != 0) return;
@@ -80,7 +86,10 @@ public sealed class NMesh : NObject, ICloneable {
         if (Vbo == 0) Vbo = GL.GenBuffer();
         GL.glBindVertexArray(Vao);
         int n = Vertices.Length;
-        var buf = new GpuVertex[n];
+        // one staging array for all uploads (GL copies it in glBufferData): a new one per upload was
+        // ~800 KB per SFX mesh, many times a frame, and the large-object garbage forced full GCs
+        if (staging.Length < n) staging = new GpuVertex[Math.Max(n, staging.Length * 2)];
+        var buf = staging;
         var pos = skinnedPos ?? Vertices;
         var nor = skinnedNormals ?? Normals;
         var white = new Color32(255, 255, 255, 255);
@@ -103,10 +112,13 @@ public sealed class NMesh : NObject, ICloneable {
         GL.glEnableVertexAttribArray(AttrTangent); GL.glVertexAttribPointer(AttrTangent, 4, GL.FLOAT, 0, VStride, 44);
         if (Dirty || Ibo.Length != SubMeshes.Count) {
             Core.GpuStats.IboUploads++;
-            foreach (var b in Ibo) GL.DeleteBuffer(b);
-            Ibo = new uint[SubMeshes.Count];
+            if (Ibo.Length != SubMeshes.Count) {
+                var keep = new uint[SubMeshes.Count];
+                for (int s = 0; s < Ibo.Length; s++) { if (s < keep.Length) keep[s] = Ibo[s]; else GL.DeleteBuffer(Ibo[s]); }
+                Ibo = keep;
+            }
             for (int s = 0; s < SubMeshes.Count; s++) {
-                Ibo[s] = GL.GenBuffer();
+                if (Ibo[s] == 0) Ibo[s] = GL.GenBuffer();
                 GL.glBindBuffer(GL.ELEMENT_ARRAY_BUFFER, Ibo[s]);
                 var idx = SubMeshes[s].Indices;
                 fixed (int* p = idx) GL.glBufferData(GL.ELEMENT_ARRAY_BUFFER, idx.Length * 4, p, GL.STATIC_DRAW);
@@ -250,23 +262,25 @@ public static class Meshes {
         return r;
     }
 
-    static void Touch(NMesh m) { m.Dirty = true; if (!m.BoundsSet) m.RecalculateBounds(); }
+    static void Touch(NMesh m) { m.Dirty = true; if (!m.BoundsSet) m.BoundsStale = true; }
 
     [Icall("UnityEngine.Mesh::Internal_Create")] static void Create(Mesh mono) => Registry.Add(new NMesh(), mono);
 
     [Icall("UnityEngine.Mesh::Clear")]
     static void Clear(Mesh self, bool keepLayout) {
+        long pt = Core.Prof.T0();
         var m = M(self);
         m.Vertices = Array.Empty<Vector3>(); m.Normals = null; m.Tangents = null; m.UV = m.UV2 = m.UV3 = m.UV4 = null; m.Colors = null;
         m.SubMeshes = new() { new SubMeshData() };
         m.BoneWeights = null;
         m.Dirty = true;
+        Core.Prof.Call(0, pt);
     }
 
     static T[] ToArr<T>(object o) => o switch { T[] a => a, List<T> l => l.ToArray(), _ => Array.Empty<T>() };
 
     [Icall("UnityEngine.Mesh::get_vertices")] static Vector3[] GetV(Mesh s) => (Vector3[])M(s).Vertices.Clone();
-    [Icall("UnityEngine.Mesh::set_vertices")] static void SetV(Mesh s, Vector3[] v) { var m = M(s); m.Vertices = v ?? Array.Empty<Vector3>(); Touch(m); }
+    [Icall("UnityEngine.Mesh::set_vertices")] static void SetV(Mesh s, Vector3[] v) { long pt = Core.Prof.T0(); var m = M(s); m.Vertices = v ?? Array.Empty<Vector3>(); Touch(m); Core.Prof.Call(1, pt); }
     [Icall("UnityEngine.Mesh::SetVerticesInternal")] static void SetVL(Mesh s, object v) { var m = M(s); m.Vertices = ToArr<Vector3>(v); Touch(m); }
     [Icall("UnityEngine.Mesh::get_normals")] static Vector3[] GetN(Mesh s) => (Vector3[]?)M(s).Normals?.Clone() ?? Array.Empty<Vector3>();
     [Icall("UnityEngine.Mesh::set_normals")] static void SetN(Mesh s, Vector3[] v) { var m = M(s); m.Normals = v; m.Dirty = true; }
@@ -275,7 +289,7 @@ public static class Meshes {
     [Icall("UnityEngine.Mesh::set_tangents")] static void SetT(Mesh s, Vector4[] v) { var m = M(s); m.Tangents = v; m.Dirty = true; }
     [Icall("UnityEngine.Mesh::SetTangentsInternal")] static void SetTL(Mesh s, object v) { var m = M(s); m.Tangents = ToArr<Vector4>(v); m.Dirty = true; }
     [Icall("UnityEngine.Mesh::get_uv")] static Vector2[] GetUV(Mesh s) => (Vector2[]?)M(s).UV?.Clone() ?? Array.Empty<Vector2>();
-    [Icall("UnityEngine.Mesh::set_uv")] static void SetUV(Mesh s, Vector2[] v) { var m = M(s); m.UV = v; m.Dirty = true; }
+    [Icall("UnityEngine.Mesh::set_uv")] static void SetUV(Mesh s, Vector2[] v) { long pt = Core.Prof.T0(); var m = M(s); m.UV = v; m.Dirty = true; Core.Prof.Call(3, pt); }
     [Icall("UnityEngine.Mesh::get_uv2")] static Vector2[] GetUV2(Mesh s) => (Vector2[]?)M(s).UV2?.Clone() ?? Array.Empty<Vector2>();
     [Icall("UnityEngine.Mesh::set_uv2")] static void SetUV2(Mesh s, Vector2[] v) { var m = M(s); m.UV2 = v; m.Dirty = true; }
     [Icall("UnityEngine.Mesh::get_uv3")] static Vector2[] GetUV3(Mesh s) => (Vector2[]?)M(s).UV3?.Clone() ?? Array.Empty<Vector2>();
@@ -313,9 +327,11 @@ public static class Meshes {
     static readonly bool traceCol = Environment.GetEnvironmentVariable("FF9_TRACE_MESHCOL") != null;
     [Icall("UnityEngine.Mesh::set_colors32")]
     static void SetC32(Mesh s, Color32[] v) {
+        long pt = Core.Prof.T0();
         var m = M(s);
         if (traceCol && v != null && v.Length == 4) Log.Info($"frame {Core.Clock.Frame} mesh#{m.Id} '{m.Name}' colors32 {v[0]}");
         m.Colors = v; m.Dirty = true;
+        Core.Prof.Call(2, pt);
     }
 
     [Icall("UnityEngine.Mesh::RecalculateBounds")] static void RecalcBounds(Mesh s) => M(s).RecalculateBounds();
@@ -352,9 +368,11 @@ public static class Meshes {
 
     [Icall("UnityEngine.Mesh::set_triangles")]
     static void SetTris(Mesh s, int[] t) {
+        long pt = Core.Prof.T0();
         var m = M(s);
         m.SubMeshes = new() { new SubMeshData { Indices = t ?? Array.Empty<int>() } };
         Touch(m);
+        Core.Prof.Call(4, pt);
     }
 
     static SubMeshData Sub(NMesh m, int i) {

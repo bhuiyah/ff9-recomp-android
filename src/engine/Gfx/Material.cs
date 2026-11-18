@@ -143,7 +143,7 @@ public static class Materials {
     }
 
     [Icall("UnityEngine.Material::get_shader")] static UnityEngine.Shader? GetShader(Material m) => M(m).ShaderObj;
-    [Icall("UnityEngine.Material::set_shader")] static void SetShader(Material m, UnityEngine.Shader s) { var x = M(m); x.ShaderObj = s; x.ApplyShaderDefaults(); }
+    [Icall("UnityEngine.Material::set_shader")] static void SetShader(Material m, UnityEngine.Shader s) { long pt = Core.Prof.T0(); var x = M(m); x.ShaderObj = s; x.ApplyShaderDefaults(); Core.Prof.Call(5, pt); }
     [Icall("UnityEngine.Material::INTERNAL_CALL_SetColor")] static void SetColor(Material m, int id, ref Color c) => M(m).Vectors[id] = new Vector4(c.r, c.g, c.b, c.a);
     [Icall("UnityEngine.Material::GetColor")] static Color GetColor(Material m, int id) { var v = M(m).Vectors.GetValueOrDefault(id); return new Color(v.x, v.y, v.z, v.w); }
     [Icall("UnityEngine.Material::INTERNAL_CALL_SetVector")] static void SetVector(Material m, int id, ref Vector4 v) => M(m).Vectors[id] = v;

@@ -162,7 +162,8 @@ public static class Cameras {
     }
 
     [Icall("UnityEngine.Camera::get_main")]
-    static Camera? Main() => Live.Where(c => c.Enabled && c.GameObject.ActiveInHierarchy && c.GameObject.Tag == "MainCamera").OrderBy(c => c.Depth).FirstOrDefault()?.Managed as Camera;
+    static Camera? Main() { long pt = Core.Prof.T0(); var r = MainImpl(); Core.Prof.Call(6, pt); return r; }
+    static Camera? MainImpl() => Live.Where(c => c.Enabled && c.GameObject.ActiveInHierarchy && c.GameObject.Tag == "MainCamera").OrderBy(c => c.Depth).FirstOrDefault()?.Managed as Camera;
 
     [Icall("UnityEngine.Camera::get_current")] static Camera? CurrentCam() => Current?.Managed as Camera;
 

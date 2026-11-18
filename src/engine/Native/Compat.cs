@@ -27,6 +27,7 @@ public static class Compat {
         InstallCloudFolder();
         InstallMovieClock();
         InstallNoWalkmeshFix();
+        ProfPostRender.Install();
     }
 
     // Movies with another frame rate than the game's 15 (Moguri's 30 fps ones). MovieMaterial.Open

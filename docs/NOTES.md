@@ -460,6 +460,10 @@ The swirl stayed black. Three things, all needed:
 - Result on the Thor (FF9_TEST_FIELDS=105,104:400:6 changes fields with SwirlInBlack): the
   captured screen zooms and turns, brightens, then fades to black over ~8 frames at 60 fps (the
   game's own timing). A real battle's swirl was not reached here.
+- That short swirl is Memoria.ini's BattleSwirlFrames = 0 (Memoria's default: SFX_Rush starts the
+  fade-out at frame 0; the launcher's "Skip the battle swirl" is on). At 115 (PlayStation) the
+  same test shows the full swirl, brightening and turning then darkening: SwirlScene to Loading
+  4.2 s on the Thor. Issue 24's later "no swirl" with 0.1.23 was this setting.
 - FF9_TRACE_FX=1 logs brightness of the camera picture, the Rush textures, the capture, the
   screen after each stage, the cameras, the fader's colours; FF9_TRACE_FX=shots writes the final
   screen of each image-effect frame to files/fx_N.png.

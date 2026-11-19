@@ -180,9 +180,17 @@ final class MemoriaSettings {
         for (String s : ch.sets) {
             int dot = s.indexOf('.'), eq = s.indexOf('=');
             String section = s.substring(0, dot);
-            Settings.put(lines, section, s.substring(dot + 1, eq), s.substring(eq + 1));
-            if (get(lines, section, "Enabled") != null) Settings.put(lines, section, "Enabled", "1");
+            String key = s.substring(dot + 1, eq);
+            Settings.put(lines, section, key, s.substring(eq + 1));
+            if (!key.equalsIgnoreCase("Enabled") && get(lines, section, "Enabled") != null && !setsEnabled(ch, section))
+                Settings.put(lines, section, "Enabled", "1");
         }
+    }
+
+    /** The choice sets its section's Enabled itself ("Font.Enabled=0" is the game's own font). */
+    private static boolean setsEnabled(Choice ch, String section) {
+        for (String s : ch.sets) if (s.regionMatches(true, 0, section + ".Enabled=", 0, section.length() + 9)) return true;
+        return false;
     }
 
     static void write(File ini, List<String> lines) throws IOException { Settings.writeIni(ini, lines); }
@@ -202,8 +210,26 @@ final class MemoriaSettings {
 
     static List<Opt> inGroup(String g) {
         List<Opt> out = new ArrayList<>();
+        if (g.equals(INTERFACE)) out.add(fontOpt());
         for (Opt o : OPTIONS) if (o.group.equals(g)) out.add(o);
         return out;
+    }
+
+    // ---- the text font (GitHub issue 36)
+    /** The player's own fonts (files/fonts), set by the launcher. */
+    static File userFonts;
+    static final String PSX_FONT = "\"Alexandria\", \"Garnet\"";
+
+    /** Memoria launcher's Font list: the game's font, the PlayStation's (Alexandria and Garnet,
+     *  in Memoria's own font bundle; its "Use PSX font" switch sets the same), then the fonts the
+     *  engine finds on the device (FontList), with Memoria's fallback after each as on the PC. */
+    static Opt fontOpt() {
+        List<Choice> cs = new ArrayList<>();
+        cs.add(c("The game's", "Font.Enabled=0"));
+        cs.add(c("PlayStation", "Font.Enabled=1", "Font.Names=" + PSX_FONT));
+        for (String n : FontList.names(userFonts)) cs.add(c(n, "Font.Enabled=1", "Font.Names=\"" + n + "\", \"Times Bold\""));
+        return pick(INTERFACE, "Font", "The text font: the game's, the PlayStation's, or one of this device's fonts. "
+                + "Your own .ttf or .otf files go in the fonts folder next to the game folder.", cs.toArray(new Choice[0]));
     }
 
     static boolean known(String g) { return Arrays.asList(GROUPS).contains(g); }

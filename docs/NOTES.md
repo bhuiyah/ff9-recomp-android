@@ -654,3 +654,22 @@ The swirl stayed black. Three things, all needed:
   as in issue 20. Compat replaces Configuration.Audio.Backend's getter with 2 (SoLoud) and logs
   "sound backend: ... asks for N" once. Thor: a scratch mod folder with Backend = 1 in its
   Memoria.ini, then the title with its cursor, moving with the pad, no SoundLib exception.
+
+## Font choice (0.1.29, issue 36)
+
+- Memoria's [Font]: Enabled = 0 is the game's font. Its launcher's "Use PSX font" sets Enabled = 1,
+  Names = "Alexandria", "Garnet": EncryptFontManager.SetDefaultFont takes Names[0] from Memoria's
+  own font bundle (EmbeddedAsset/FA), which already worked here. Any other name must be an OS font
+  (Font.GetOSInstalledFontNames, then Font.CreateDynamicFontFromOSFont).
+- Text/Fonts.cs: the OS fonts are files/fonts (the player's, next to the game folder),
+  /system/fonts and /product/fonts, .ttf and .otf, each named by its file name without the
+  extension. Internal_CreateDynamicFont loads the first of the names found there (FontFile reads
+  glyf and CFF); otherwise it borrows the first loaded font's outlines as before.
+- Launcher: Memoria settings > Interface > Font (MemoriaSettings.fontOpt): the game's, PlayStation,
+  then FontList.java's fonts (outlines and a cmap with 'A' and 'a': no colour emoji, no fonts
+  without Latin letters). A row with more than 6 choices opens a list.
+- MemoriaSettings.apply turned a section's Enabled back to 1 after a choice set it to 0; a choice
+  that sets Enabled itself now keeps it.
+- Tested on the Thor: PlayStation font, ComingSoon from /system/fonts and a copy in files/fonts
+  draw the battle menu (-memoria-battle 336); the list opens on the current font, and the game's /
+  PlayStation choices write Memoria's values.

@@ -203,9 +203,44 @@ public static class Fonts {
     [Icall("UnityEngine.Font::Internal_CreateDynamicFont")]
     static void CreateDynamic(Font f, string[] names, int size) {
         var n = Registry.Add(new NFont { Name = names?.FirstOrDefault() ?? "", Names = names ?? Array.Empty<string>(), FontSizeF = size }, f);
-        // OS fonts: none on Android; borrow the first loaded dynamic font's outlines
-        foreach (var o in Registry.All) if (o is NAsset { Data: NFont x } && x.File != null) { n.File = x.File; break; }
+        // a font of the device's (Memoria's [Font] Names, GitHub issue 36), the first that loads
+        foreach (var name in names ?? Array.Empty<string>()) {
+            if (!OSFontFiles().TryGetValue(name, out var path)) continue;
+            try {
+                n.File = new FontFile(System.IO.File.ReadAllBytes(path));
+                Log.Info($"font '{name}' from {path}: {n.File.NumGlyphs} glyphs, {n.File.UnitsPerEm} units/em");
+                break;
+            } catch (Exception e) { Log.Warn($"font '{name}' ({path}): {e.Message}"); }
+        }
+        // otherwise the first loaded dynamic font's outlines
+        if (n.File == null)
+            foreach (var o in Registry.All) if (o is NAsset { Data: NFont x } && x.File != null) { n.File = x.File; break; }
         n.MaterialObj = DefaultFontMaterial();
+    }
+
+    // The device's fonts, as Windows' installed fonts are on the PC: Android's own and the
+    // player's in files/fonts (next to the game folder), each called by its file name without the
+    // extension (the launcher's FontList.java lists the same; .ttc collections are left out).
+    static Dictionary<string, string>? osFonts;
+    static Dictionary<string, string> OSFontFiles() {
+        if (osFonts != null) return osFonts;
+        var d = new Dictionary<string, string>(StringComparer.Ordinal);
+        var dirs = new List<string>();
+        if (Environment.GetEnvironmentVariable("FF9_GAME") is { } game && System.IO.Path.GetDirectoryName(game) is { } files)
+            dirs.Add(System.IO.Path.Combine(files, "fonts"));
+        dirs.Add("/system/fonts");
+        dirs.Add("/product/fonts");
+        foreach (var dir in dirs) {
+            try {
+                if (!System.IO.Directory.Exists(dir)) continue;
+                foreach (var p in System.IO.Directory.GetFiles(dir).OrderBy(x => x, StringComparer.OrdinalIgnoreCase)) {
+                    var ext = System.IO.Path.GetExtension(p).ToLowerInvariant();
+                    if (ext != ".ttf" && ext != ".otf") continue;
+                    d.TryAdd(System.IO.Path.GetFileNameWithoutExtension(p), p);
+                }
+            } catch (Exception e) { Log.Warn($"fonts in {dir}: {e.Message}"); }
+        }
+        return osFonts = d;
     }
 
     static Material? fontMat;
@@ -218,7 +253,7 @@ public static class Fonts {
         return fontMat;
     }
 
-    [Icall("UnityEngine.Font::GetOSInstalledFontNames")] static string[] OSFonts() => Array.Empty<string>();
+    [Icall("UnityEngine.Font::GetOSInstalledFontNames")] static string[] OSFonts() => OSFontFiles().Keys.ToArray();
 
     [Icall("UnityEngine.Font::get_material")]
     static Material? GetMaterial(Font f) {

@@ -494,6 +494,8 @@ public class LauncherActivity extends Activity {
         java.util.List<String> lines;
         try { lines = MemoriaSettings.read(ini); }
         catch (Exception e) { col.addView(text("Import the game first (Game files): Memoria's settings live in its Memoria.ini.", 16, DIM)); return col; }
+        MemoriaSettings.userFonts = new File(install.files, "fonts");     // the player's own fonts (issue 36)
+        MemoriaSettings.userFonts.mkdirs();
         col.addView(note("As Memoria's launcher on the PC has them. Changes take effect the next time the game starts. "
                 + "Frame rate, widescreen, skip logos, boosters, fast dialog, button layout and volumes are in Settings."));
         for (String g : MemoriaSettings.GROUPS) {
@@ -530,7 +532,19 @@ public class LauncherActivity extends Activity {
             int next = at[0] < 0 ? (dir > 0 ? 0 : n - 1) : (at[0] + dir + n) % n;
             if (setMemoria(ini, o, next)) { at[0] = next; label.run(); }
         };
-        b.setOnClickListener(v -> step.accept(1));
+        if (o.choices.length <= 6) b.setOnClickListener(v -> step.accept(1));
+        else b.setOnClickListener(v -> {         // a long list (the fonts): pick from it
+            String[] names = new String[o.choices.length];
+            for (int i = 0; i < names.length; i++) names[i] = o.choices[i].label;
+            styled(new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(o.label)
+                    .setSingleChoiceItems(names, at[0], (d, w) -> {
+                        if (setMemoria(ini, o, w)) { at[0] = w; label.run(); }
+                        d.dismiss();
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show());
+        });
         b.setOnKeyListener((v, code, e) -> {
             if (code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_RIGHT) return false;
             if (e.getAction() == KeyEvent.ACTION_DOWN) { Sfx.play(this, Sfx.CURSOR); step.accept(code == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1); }

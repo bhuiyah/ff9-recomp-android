@@ -32,7 +32,8 @@ public class TouchLayoutActivity extends Activity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF10141C);
 
-        controls = new TouchControls(this, (b, lt, rt) -> { });
+        controls = new TouchControls(this, (b, lt, rt, rx, ry) -> { });
+        controls.setExtra(prefs.getBoolean("touch_extra", false));
         controls.setLayout(prefs.getString("touch_layout", ""));
         controls.setEditing(true, this::save);
         root.addView(controls, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -50,6 +51,19 @@ public class TouchLayoutActivity extends Activity {
         panel.addView(hint);
         panel.addView(slider("Size", 50, 200, Math.round(controls.scale() * 100), v -> controls.setScale(v / 100f)));
         panel.addView(slider("Opacity", 15, 100, Math.round(controls.getAlpha() * 100), v -> controls.setAlpha(v / 100f)));
+        // as FF7Recomp's GitHub #62: an analog right stick (Memoria's world map camera) and L3 / R3
+        // (Memoria's L3BindCheat / R3BindCheat)
+        android.widget.CheckBox extra = new android.widget.CheckBox(this);
+        extra.setText("Right stick, L3 and R3");
+        extra.setTextColor(0xFFFFFFFF);
+        extra.setTextSize(15);
+        extra.setChecked(controls.extra());
+        extra.setOnCheckedChangeListener((cb, on) -> {
+            controls.setExtra(on);
+            prefs.edit().putBoolean("touch_extra", on).apply();
+            save();
+        });
+        panel.addView(extra);
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER);
         Button reset = new Button(this);

@@ -72,7 +72,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         // the on-screen pad (Settings > Touch controls: Auto shows it when no controller is connected)
         touchMode = prefs.getInt("touch_controls", 0);
         if (touchMode != 2) {
-            touch = new TouchControls(this, (tb, tl, tr) -> { touchButtons = tb; touchLt = tl; touchRt = tr; send(); });
+            touch = new TouchControls(this, (tb, tl, tr, trx, try_) -> { touchButtons = tb; touchLt = tl; touchRt = tr; touchRx = trx; touchRy = try_; send(); });
+            touch.setExtra(prefs.getBoolean("touch_extra", false));   // right stick, L3, R3 (as FF7Recomp's GitHub #62)
             touch.setLayout(prefs.getString("touch_layout", ""));
             root.addView(touch, new android.widget.FrameLayout.LayoutParams(-1, -1));
             ((android.hardware.input.InputManager) getSystemService(INPUT_SERVICE)).registerInputDeviceListener(deviceListener, null);
@@ -456,7 +457,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
 
     // ---- touch controls and controller detection
     private TouchControls touch;
-    private int touchMode, touchButtons, touchLt, touchRt;
+    private int touchMode, touchButtons, touchLt, touchRt, touchRx, touchRy;
 
     private static boolean isGamepad(InputDevice d) {
         if (d == null || d.isVirtual()) return false;
@@ -473,7 +474,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         if (touch == null) return;
         boolean show = touchMode == 1 || (touchMode == 0 && companion == null && companionHost == null && !gamepadConnected());
         touch.setVisibility(show ? View.VISIBLE : View.GONE);
-        if (!show && (touchButtons | touchLt | touchRt) != 0) { touchButtons = touchLt = touchRt = 0; send(); }
+        if (!show && (touchButtons | touchLt | touchRt | touchRx | touchRy) != 0) { touchButtons = touchLt = touchRt = touchRx = touchRy = 0; send(); }
     }
 
     private final android.hardware.input.InputManager.InputDeviceListener deviceListener =
@@ -775,7 +776,9 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         int all = buttons | dpad | testButtons | keyButtons | touchButtons;
         // Select+Start together is ours (leave the game): the game sees neither while both are held
         int toGame = (all & (START | BACK)) == (START | BACK) ? all & ~(START | BACK) : all;
-        nativePad(toGame, Math.max(lt, touchLt), Math.max(rt, touchRt), lx, ly, rx, ry);
+        // the on-screen right stick when the real one is centred
+        boolean realStick = rx != 0 || ry != 0;
+        nativePad(toGame, Math.max(lt, touchLt), Math.max(rt, touchRt), lx, ly, realStick ? rx : touchRx, realStick ? ry : touchRy);
         // Select+L1: the guide or the panels on the second screen
         boolean guideCombo = (all & (BACK | LB)) == (BACK | LB);
         if (guideCombo && !guideHeld) toggleGuide();

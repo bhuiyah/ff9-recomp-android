@@ -700,3 +700,14 @@ The swirl stayed black. Three things, all needed:
   Thor's main screen never turns upright (wm size and user-rotation don't change it); tested in a
   tall multi-window (am start --windowingMode 6): the layout came up, 60 FPS, panels with
   portraits, the pad's Down moved the battle cursor (a press of 150 ms; adb's tap is too short).
+
+## On-screen right stick, L3 and R3 (0.1.33, as FF7Recomp's GitHub #62)
+
+- Settings > On-screen controls > Size and layout: "Right stick, L3 and R3" (pref `touch_extra`,
+  off by default; TestControl SET `--ez touch_extra true`). TouchControls adds L3 / R3 under
+  SELECT / START (XInput 0x40 / 0x80: Unity joystick buttons 8 / 9, Memoria's L3BindCheat /
+  R3BindCheat) and an analog stick above the face buttons, a fifth draggable group (the layout
+  string's optional fifth offset, so older layouts still load). The finger that lands on the
+  stick holds it until it lifts; the knob goes out as RX/RY (±32767, Y up), used by GameActivity
+  while the real right stick is centred (Memoria's world map camera, [AnalogControl] RightStickCamera).
+- Not yet tried on the Thor (it was in use when this was built).

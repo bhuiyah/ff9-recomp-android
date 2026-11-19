@@ -27,7 +27,37 @@ public static class Compat {
         InstallCloudFolder();
         InstallMovieClock();
         InstallNoWalkmeshFix();
+        InstallSoundBackend();
         ProfPostRender.Install();
+    }
+
+    // SoLoud (2) is the only sound backend there is on Android. The launcher writes Backend = 2
+    // into the main Memoria.ini, but Memoria reads each active mod's own Memoria.ini over it, and
+    // Ferny Fantasy IX's sets [Audio] Backend = 1 (SaXAudio, a Windows DLL): SoundLib.Awake threw,
+    // the title's set-up with it, and the title showed no cursor and took no input (GitHub issue
+    // 35, as issue 20 was without the line). Configuration.Audio.Backend is answered with 2 here,
+    // whatever the files say.
+    static void InstallSoundBackend() {
+        var get = Type.GetType("Memoria.Configuration+Audio, Assembly-CSharp")?.GetProperty("Backend", BindingFlags.Static | BindingFlags.Public)?.GetGetMethod();
+        if (get == null || get.ReturnType != typeof(int)) { Log.Warn("sound backend: this Memoria's Configuration.Audio differs; left as it is"); return; }
+        Detour(get, M(nameof(SoundBackend)));
+    }
+
+    static bool backendLogged;
+    static int SoundBackend() {
+        if (!backendLogged) {
+            backendLogged = true;
+            try {
+                const BindingFlags I = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+                var cfg = Type.GetType("Memoria.Configuration, Assembly-CSharp");
+                object? inst = cfg?.GetField("Instance", BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null);
+                object? audio = inst == null ? null : cfg!.GetField("_audio", I)?.GetValue(inst);
+                object? ini = audio?.GetType().GetField("Backend", I)?.GetValue(audio);
+                object? v = ini?.GetType().GetField("Value", I)?.GetValue(ini);
+                if (v is int n && n != 2) Log.Info($"sound backend: Memoria.ini (or a mod's) asks for {n}; SoLoud (2) is used, the only one on Android");
+            } catch (Exception e) { Log.Info("sound backend: " + e.Message); }
+        }
+        return 2;
     }
 
     // Movies with another frame rate than the game's 15 (Moguri's 30 fps ones). MovieMaterial.Open

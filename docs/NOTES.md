@@ -638,3 +638,19 @@ The swirl stayed black. Three things, all needed:
   frames 40 -> 30 ms. What's left of those frames is mostly managed code (Memoria's mesh building,
   our uploads and draws). More from the translator (blocks jumping straight to each other, guest
   registers kept in host registers) could save about another 1.5 ms there.
+
+## Battle smear; a mod's sound backend (0.1.28, issues 33, 38, 35)
+
+- Issues 33/38, smeared doors and spell effects that stayed in battle: the Battle Camera clears
+  depth only and has an image effect (BattleMapCameraController.OnRenderImage, PostBlur), so since
+  0.1.19 it drew into a pooled temporary texture holding an old frame. Where the battle scene draws
+  nothing (a doorway, the opening above Prima Vista's stairs, above the walls) old frames showed
+  through and moving things left trails. Unity gives a camera that doesn't clear colour the
+  target's current picture: Pipeline.RenderCamera now copies the target (or the screen) into the
+  temporary texture first (glBlitFramebuffer). Thor, battle 336: white spikes left in the opening
+  above the stairs before, clean black after; 59 FPS.
+- Issue 35, Ferny Fantasy IX: no cursor at the title. Memoria reads each active mod's Memoria.ini
+  over the main one, and that mod's sets [Audio] Backend = 1 (SaXAudio), so SoundLib.Awake threw
+  as in issue 20. Compat replaces Configuration.Audio.Backend's getter with 2 (SoLoud) and logs
+  "sound backend: ... asks for N" once. Thor: a scratch mod folder with Backend = 1 in its
+  Memoria.ini, then the title with its cursor, moving with the pad, no SoundLib exception.

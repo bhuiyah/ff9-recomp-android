@@ -613,6 +613,14 @@ public static class Pipeline {
             var camTarget = cam.Target;
             int w = camTarget != null ? Textures.Of(camTarget).Width : Device.Width, h = camTarget != null ? Textures.Of(camTarget).Height : Device.Height;
             var src = TextureIcalls.Temporary(w, h, 24);
+            // A camera that doesn't clear the colour draws over what the cameras before it drew,
+            // and Unity gives its image effects that picture: the target's contents are copied
+            // into the temporary texture first. Without the copy the battle camera (clear Depth,
+            // PostBlur) drew over the pooled texture's last frame wherever the battle scene draws
+            // nothing (a doorway, above the walls), and moving things left trails there that
+            // stayed: the smeared doors and spell effects of GitHub issues 33 and 38.
+            if (cam.ClearFlags != CameraClearFlags.Skybox && cam.ClearFlags != CameraClearFlags.SolidColor)
+                CopyColour(camTarget != null ? Textures.Of(camTarget) as NRenderTexture : null, (NRenderTexture)Textures.Of(src), w, h);
             cam.Target = src;
             RenderTargets.CameraTarget = Textures.Of(src) as NRenderTexture;
             try { RenderCameraOnce(cam, replacement, replacementTag); }
@@ -631,6 +639,19 @@ public static class Pipeline {
             return;
         }
         RenderCameraOnce(cam, replacement, replacementTag);
+    }
+
+    /// Copies a target's colour (null: the screen) into a render texture of the same size.
+    static void CopyColour(NRenderTexture? from, NRenderTexture to, int w, int h) {
+        if (!Device.Ready) return;
+        from?.Create();
+        to.Create();
+        GL.glDisable(GL.SCISSOR_TEST);
+        GL.glColorMask(1, 1, 1, 1);
+        GL.glBindFramebuffer(GL.READ_FRAMEBUFFER, from?.Fbo ?? 0);
+        GL.glBindFramebuffer(GL.DRAW_FRAMEBUFFER, to.Fbo);
+        GL.glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL.COLOR_BUFFER_BIT, GL.NEAREST);
+        GL.glBindFramebuffer(GL.FRAMEBUFFER, RenderTargets.CurrentFbo);
     }
 
     static void RenderCameraOnce(NCamera cam, UnityEngine.Shader? replacement, string? replacementTag) {

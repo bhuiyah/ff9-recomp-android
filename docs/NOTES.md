@@ -740,7 +740,14 @@ The swirl stayed black. Three things, all needed:
 - Tested on the Thor, signed in to a Steam account that doesn't own FF9 (ownership ticket
   AccessDenied for 377840), so nothing could reach Steam: writing the Cloud file into the folder
   started the watcher, showed the first toast, and logged the sync's "does not own" failure and
-  its toast. With the option off, the same write started nothing. The title screen's Upload was
-  greyed out on the Thor: CloudUI enables it only when the save system names a latest slot
-  (GetLatestSlotAndSave); most likely these saves gave none (not checked further), so the real
-  button wasn't pressed. A real Upload to Steam with an owning account is untested.
+  its toast. With the option off, the same write started nothing. A real Upload to Steam with an
+  owning account is untested.
+- Why Upload was greyed out on the Thor (looked into after the release): not a bug. The Cloud
+  menu opens with "Connecting to server...", then (no Cloud file yet) "No saved data in cloud."
+  for 1.5 s (CloudUI.DisplayCorruptAccessDialog, LastErrno 7 CloudFileNotFound), then the
+  buttons. Upload sends the slot saves: WinIosAndrSharedDataSerializer.LoadCloudSyncPreview reads
+  only the latest slot (SharedDataBytesStorage.GetLatestSlotAndSave), and CloudUI.CheckData
+  enables Upload only when that preview exists. The Thor's saves have no slot save (only
+  Memoria's autosave, at the start of the game before the first moogle; Load Game's folders don't
+  open), so LatestSlot is -1 and Upload stays grey, as on the PC. Pressing the real Upload needs
+  a slot save first.

@@ -714,3 +714,16 @@ The swirl stayed black. Three things, all needed:
   show; dragging the stick turns the world map camera, which stops when the finger lifts (the knob
   re-centres). L3's high speed mode had no visible effect to measure; its bit takes the same path
   as the other on-screen buttons.
+
+## On-screen BOOST button (0.1.34, GitHub #44)
+
+- Phones have no bottom screen, so the Extras page's booster buttons weren't reachable in
+  landscape. TouchControls has a BOOST pill under START (under R3 with the extras; part of the
+  START group for the layout editor). It opens a row at the top middle: High speed, No battles,
+  Battle assist, 9999 damage, each with ON/OFF read from the companion state (`speed`, `noenc`,
+  `bplus`, `dmg`, refreshed every 0.5 s while open). A tap sends CompanionView's command
+  (GameActivity.commandFromPanel 1/4/5/6, engine Core/Companion.cs RunCommands); BOOST again closes
+  it. Fingers on BOOST or the row press no pad button (BOOST is bit 22, masked off).
+- Tested on the Thor (touch_controls 1, world map save 1:2): the row opens, High speed and 9999
+  damage turn on and off (log "panel: booster HighSpeedMode on/off", "Attack9999 on/off", the
+  pills turn gold), BOOST closes the row, and Y still opens the menu.

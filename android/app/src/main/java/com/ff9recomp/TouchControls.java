@@ -28,6 +28,11 @@ import android.view.View;
  * FF7Recomp's GitHub #62): an analog right stick above the face buttons (a fifth group; Memoria's
  * world map camera with [AnalogControl] RightStickCamera) and L3 / R3 under SELECT / START
  * (Memoria's [Control] L3BindCheat / R3BindCheat, e.g. high speed mode).
+ *
+ * BOOST (under START, GitHub #44): opens a row of the four boosters at the top of the screen
+ * (High speed, No battles, Battle assist, 9999 damage), the ones the AYN Thor's bottom screen has
+ * on its Extras page; a tap turns one on or off (GameActivity.commandFromPanel, engine
+ * Core/Companion.cs), and BOOST again closes the row. Not sent to the game as a button.
  */
 final class TouchControls extends View {
     interface Listener { void pad(int buttons, int lt, int rt, int rx, int ry); }
@@ -37,6 +42,7 @@ final class TouchControls extends View {
     private static final int CIRCLE = 0x2000, CROSS = 0x1000, SQUARE = 0x4000, TRIANGLE = 0x8000;
     private static final int L3 = 0x0040, R3 = 0x0080;
     private static final int L2 = 1 << 20, R2 = 1 << 21;    // triggers: sent as analog values
+    private static final int BOOST = 1 << 22;                 // the boosters' row (not a pad button)
 
     private static final class Btn {
         final int bit; final String label, hint; final boolean round;
@@ -50,9 +56,20 @@ final class TouchControls extends View {
             l1 = new Btn(L1, "L1", "", false), l2 = new Btn(L2, "L2", "", false),
             r1 = new Btn(R1, "R1", "", false), r2 = new Btn(R2, "R2", "", false),
             select = new Btn(SELECT, "SELECT", "", false), start = new Btn(START, "START", "", false),
-            l3 = new Btn(L3, "L3", "", false), r3 = new Btn(R3, "R3", "", false);
-    private final Btn[] base = { a, b, x, y, l1, l2, r1, r2, select, start },
-            withExtra = { a, b, x, y, l1, l2, r1, r2, select, start, l3, r3 };
+            l3 = new Btn(L3, "L3", "", false), r3 = new Btn(R3, "R3", "", false),
+            boost = new Btn(BOOST, "BOOST", "", false);
+    private final Btn[] base = { a, b, x, y, l1, l2, r1, r2, select, start, boost },
+            withExtra = { a, b, x, y, l1, l2, r1, r2, select, start, l3, r3, boost };
+
+    // the boosters' row (BOOST): CompanionView's commands and the state keys that say they are on
+    private static final String[] BOOST_NAMES = { "High speed", "No battles", "Battle assist", "9999 damage" };
+    private static final int[] BOOST_CMDS = { 1, 4, 5, 6 };
+    private static final String[] BOOST_KEYS = { "speed", "noenc", "bplus", "dmg" };
+    private final RectF[] boostRects = { new RectF(), new RectF(), new RectF(), new RectF() };
+    private boolean boostOpen;
+    private final Runnable boostRefresh = new Runnable() {
+        @Override public void run() { if (boostOpen) { invalidate(); postDelayed(this, 500); } }
+    };
     private Btn[] buttons = base;
 
     // the right stick: its ring, the finger that holds it and where the knob is (-1..1)
@@ -174,6 +191,13 @@ final class TouchControls extends View {
         float py3 = py + ph + unit * 0.2f;
         l3.r.set(m, py3, m + pw, py3 + ph);
         r3.r.set(w - m - pw, py3, w - m, py3 + ph);
+        // BOOST under START (under R3 with the extras)
+        float pyb = (extra ? py3 : py) + ph + unit * 0.2f;
+        boost.r.set(w - m - pw, pyb, w - m, pyb + ph);
+        // the boosters' row: top middle, between the shoulders
+        float bw = unit * 1.9f, bh = unit * 0.75f, gap = unit * 0.15f, rx = (w - 4 * bw - 3 * gap) / 2f, ry = m;
+        if (rx < l1.r.right + gap) { bw = (w - 2 * (l1.r.right + gap) - 3 * gap) / 4f; rx = l1.r.right + gap; }
+        for (int i = 0; i < 4; i++) boostRects[i].set(rx + i * (bw + gap), ry, rx + i * (bw + gap) + bw, ry + bh);
         // the right stick, above the face buttons
         stickR = unit * 0.85f;
         stickX = fx;
@@ -196,7 +220,7 @@ final class TouchControls extends View {
         switch (g) {
             case G_FACE: return new Btn[] { a, b, x, y };
             case G_LEFT: return extra ? new Btn[] { l2, l1, select, l3 } : new Btn[] { l2, l1, select };
-            case G_RIGHT: return extra ? new Btn[] { r1, r2, start, r3 } : new Btn[] { r1, r2, start };
+            case G_RIGHT: return extra ? new Btn[] { r1, r2, start, r3, boost } : new Btn[] { r1, r2, start, boost };
             default: return new Btn[0];
         }
     }
@@ -247,8 +271,9 @@ final class TouchControls extends View {
             c.drawCircle(kx, ky, kr, line);
             c.drawText("R", kx, ky - (text.descent() + text.ascent()) / 2, text);
         }
+        if (boostOpen) drawBoosters(c);
         for (Btn btn : buttons) {
-            boolean on = (state & btn.bit) != 0;
+            boolean on = (state & btn.bit) != 0 || (btn == boost && boostOpen);
             fill.setColor(on ? 0x90FFFFFF : 0x26FFFFFF);
             float cy = btn.r.centerY() - (text.descent() + text.ascent()) / 2;
             if (btn.round) {
@@ -268,6 +293,54 @@ final class TouchControls extends View {
                 c.drawText(btn.label, btn.r.centerX(), btn.r.centerY() - (p.descent() + p.ascent()) / 2, p);
             }
         }
+    }
+
+    /** The boosters' row, each with ON or OFF from the game's state. */
+    private void drawBoosters(Canvas c) {
+        org.json.JSONObject st = null;
+        String js = GameActivity.companionState();
+        if (js != null) try { st = new org.json.JSONObject(js); } catch (Exception ignored) { }
+        for (int i = 0; i < 4; i++) {
+            RectF r = boostRects[i];
+            boolean on = st != null && st.optInt(BOOST_KEYS[i]) == 1;
+            fill.setColor(on ? 0xB0C89B28 : 0x80000000);
+            float rr = r.height() / 2;
+            c.drawRoundRect(r, rr, rr, fill);
+            c.drawRoundRect(r, rr, rr, line);
+            c.drawText(BOOST_NAMES[i], r.centerX(), r.centerY() - unit * 0.04f, small);
+            c.drawText(on ? "ON" : "OFF", r.centerX(), r.centerY() + unit * 0.24f, small);
+        }
+    }
+
+    /** A finger came down at (px, py): BOOST opens or closes the row, a booster in it is turned on or off. */
+    private boolean boostTap(float px, float py) {
+        if (boostOpen) {
+            for (int i = 0; i < 4; i++) {
+                RectF r = boostRects[i];
+                if (r.contains(px, py)) {
+                    GameActivity.commandFromPanel(BOOST_CMDS[i]);
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                    removeCallbacks(boostRefresh);
+                    postDelayed(boostRefresh, 150);
+                    return true;
+                }
+            }
+        }
+        if (hit(px, py) == BOOST) {
+            boostOpen = !boostOpen;
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            removeCallbacks(boostRefresh);
+            if (boostOpen) post(boostRefresh);
+            invalidate();
+            return true;
+        }
+        return false;
+    }
+
+    private boolean inBoosters(float px, float py) {
+        if (!boostOpen) return false;
+        for (RectF r : boostRects) if (r.contains(px, py)) return true;
+        return false;
     }
 
     private void drawArrow(Canvas c, int dx, int dy, int bit) {
@@ -292,6 +365,10 @@ final class TouchControls extends View {
         float oldKx = knobX, oldKy = knobY;
         boolean oldHeld = stickPointer >= 0;
         // the right stick: a finger that lands on it holds it until it lifts, wherever it slides
+        if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN) {
+            int i = e.getActionIndex();
+            boostTap(e.getX(i), e.getY(i));
+        }
         if (act == MotionEvent.ACTION_CANCEL) release();
         else if (extra) {
             if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN) {
@@ -310,12 +387,13 @@ final class TouchControls extends View {
         if (act != MotionEvent.ACTION_CANCEL) {
             for (int i = 0; i < e.getPointerCount(); i++) {
                 if (i == lifted || (stickPointer >= 0 && e.getPointerId(i) == stickPointer)) continue;
+                if (inBoosters(e.getX(i), e.getY(i))) continue;
                 s |= hit(e.getX(i), e.getY(i));
             }
         }
         boolean stickMoved = knobX != oldKx || knobY != oldKy;
         if (s != state || stickMoved) {
-            if ((s & ~state) != 0 || (stickPointer >= 0 && !oldHeld)) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            if ((s & ~state & ~BOOST) != 0 || (stickPointer >= 0 && !oldHeld)) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
             state = s;
             // XInput: Y points up, the screen's down
             listener.pad(s & 0xFFFF, (s & L2) != 0 ? 255 : 0, (s & R2) != 0 ? 255 : 0,

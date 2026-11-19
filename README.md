@@ -55,7 +55,7 @@ and I would rather you know before you install it.
 - Moguri Mod and the rest of Memoria's catalog. That includes the 2K and 4K video packs, which
   play at full resolution.
 - Controller support, analog walk and run, swap confirm and cancel. On-screen touch controls for
-  devices with no controller, with a layout you can arrange.
+  devices with no controller, with a layout you can arrange, and a BOOST button for the boosters.
 - The game's boosters (High Speed with a choice of speed, Battle Assistance, No Encounters,
   9999 damage) and fast dialogue.
 - A CRT filter (**Settings** → **Display**): scanlines and a phosphor mask.

@@ -164,6 +164,11 @@ public static class Player {
         RunStarts();
         foreach (var b in Snapshot()) if (Runs(b) && b.Started) ScriptMethods.Call(b, b.Methods.Update);
         Prof.Part(2, ref ps);
+        // Unity queues Start for behaviours enabled during Update on the delayed-call queue ahead
+        // of Invoke and yield-null coroutines, so it runs this frame, before them and LateUpdate.
+        // (RecycleListPopulator's Invoke("RepositionList", 0) after a list's first SetActive: the
+        // table's Start ran after it and laid the rows out again, off the panel; GitHub #45.)
+        RunStarts();
         Coroutines.RunInvokes();
         Coroutines.Run(Coroutines.Phase.Update);
         Prof.Part(3, ref ps);

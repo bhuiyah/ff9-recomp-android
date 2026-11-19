@@ -751,3 +751,19 @@ The swirl stayed black. Three things, all needed:
   Memoria's autosave, at the start of the game before the first moogle; Load Game's folders don't
   open), so LatestSlot is -1 and Upload stays grey, as on the PC. Pressing the real Upload needs
   a slot save first.
+
+## Ability > Equip and Key items lists drew empty (0.1.36, GitHub #45)
+
+- Symptom: Ability > Equip showed an empty box (scroll arrows and the cursor in the bottom-right
+  corner, AP stars in Info); Item > Key the same. Use, Item > Use and battle lists were fine.
+- Cause: Memoria's interface options (MenuAbilityRowCount 9, MenuItemRowCount 12) resize these
+  lists with GOSubPanel.ChangeDims while their panels are still inactive. The list then fills on
+  its first SetActive(true): RecycleListPopulator.InitTableView builds the rows and calls
+  Invoke("RepositionList", 0). The engine ran that invoke the same frame, after Update, but the
+  newly activated UITable/UIScrollView only got Start the next frame, and UITable.Start's own
+  Reposition laid the rows out again, off the clipped panel (no draw calls for its SubPanel).
+- Unity queues Start for behaviours enabled during Update on the delayed-call queue ahead of
+  Invoke and yield-null coroutines, so it runs that frame before them and before LateUpdate.
+  Player.Frame now runs RunStarts again after Update, before the invokes.
+- Tested on the Thor: Ability > Equip (Zidane, 3 columns of 9 rows), Item > Key, Item > Use,
+  battles 336 and 73 (command menu, item list), field and world map.

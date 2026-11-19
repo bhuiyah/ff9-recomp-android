@@ -109,7 +109,9 @@ On the AYN Thor, with Moguri Mod and saves from a mid-game playthrough.
 3. Press **Play** (or Start).
 
 **Short on space?** With an SD card in the device, **Game files** → **Storage** moves your game,
-mods and saves to it, and back.
+mods and saves to it, and back. **Use your own folder** keeps them in a folder you pick instead
+(for example `/sdcard/FF9Recomp`), easy to back up or sync with Syncthing; it needs Android's
+"All files access", which the launcher asks for then.
 
 ### Bringing your saves
 

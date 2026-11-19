@@ -15,6 +15,11 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- the game back in front on the top screen after Pixel Guide opens on the bottom one -->
     <uses-permission android:name="android.permission.REORDER_TASKS" />
+    <!-- Game files > Storage > Use your own folder: the files in a folder the player picks, such as
+         /sdcard/FF9Recomp. Asked for only when they choose one (Storage.java). -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <!-- Pixel Guide: the bottom screen's book opens it when it is installed (CompanionView) -->
     <queries>
         <package android:name="app.nanostack.pixelguide" />
@@ -26,6 +31,7 @@
         android:hasCode="true"
         android:extractNativeLibs="true"
         android:isGame="true"
+        android:requestLegacyExternalStorage="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
         <activity android:name=".LauncherActivity" android:exported="true" android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode">

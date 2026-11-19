@@ -24,6 +24,8 @@ import java.util.Map;
  *   am broadcast -a com.ff9recomp.test.REPORT -n com.ff9recomp/.TestControl [--ez saves true] [--ez state true]
  *   am start -n com.ff9recomp/.LauncherActivity -f 0x24000000 --ez test_play true
  *   am broadcast -a com.ff9recomp.test.PAD -p com.ff9recomp --ei buttons 0x1000 --ei ms 100   (GameActivity)
+ *   am broadcast -a com.ff9recomp.test.SET -n com.ff9recomp/.TestControl --es storage_custom /sdcard/FF9RecompTest
+ *     (use the files in that folder, moving nothing; "" goes back to the app's own folder. Restart the launcher after.)
  *
  * SET takes typed extras (--ei / --ez / --es); unknown names are refused.
  */
@@ -41,6 +43,8 @@ public class TestControl extends BroadcastReceiver {
         for (String k : Settings.INTS) TYPES.put(k, Integer.class);
         for (String k : Settings.BOOLS) TYPES.put(k, Boolean.class);
         TYPES.put("guide_url", String.class);
+        // Game files > Storage's own folder ("" = the app's own folder), switched without moving anything (tests)
+        TYPES.put("storage_custom", String.class);
     }
 
     @Override

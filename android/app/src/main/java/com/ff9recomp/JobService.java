@@ -32,6 +32,8 @@ public class JobService extends Service {
     private static final String TAG = "FF9Jobs", CHANNEL = "jobs";
     private static final int ID = 9;
     static final String STEAM = "steam", IMPORT = "import", TO_SD = "to_sd", TO_INTERNAL = "to_internal";
+    /** Moving the files into a folder the player picked (Storage.CUSTOM); the job's arg is its path. */
+    static final String TO_CUSTOM = "to_custom";
     /** adb tests only (TestControl): Memoria's download, the Steam download's first step, without Steam. */
     static final String TEST_MEMORIA = "test_memoria";
     static final String MEMORIA = "memoria";        // Install Memoria into an imported copy without it
@@ -74,6 +76,7 @@ public class JobService extends Service {
             case TEST_MEMORIA: return "Downloading Memoria (test)";
             case MEMORIA: return "Installing Memoria";
             case TO_SD: return "Moving your files to the SD card";
+            case TO_CUSTOM: return "Moving your files to your folder";
             default: return "Moving your files to internal storage";
         }
     }
@@ -110,7 +113,10 @@ public class JobService extends Service {
     static void forget(Context c) {
         if (running != null) return;
         String kind = prefs(c).getString(KIND, null);
-        if (TO_SD.equals(kind) || TO_INTERNAL.equals(kind)) Storage.discardMove(c, TO_SD.equals(kind));
+        if (TO_SD.equals(kind) || TO_INTERNAL.equals(kind) || TO_CUSTOM.equals(kind)) {
+            String arg = prefs(c).getString(ARG, null);
+            Storage.discardMove(c, movePlace(kind), arg != null ? new File(arg) : null);
+        }
         clear(c);
         paused = false;
     }
@@ -228,11 +234,17 @@ public class JobService extends Service {
                 gi.importFrom(Uri.parse(arg), w -> status = w, ranBefore);
                 return "Your FINAL FANTASY IX is ready" + (gi.hasMoguri() ? ", with Moguri Mod." : ".") + " Press Play (or Start).";
             default: {
-                boolean toSd = kind.equals(TO_SD);
-                Storage.move(this, toSd, w -> status = w);
-                return toSd ? "Your files are on the SD card now." : "Your files are in internal storage now.";
+                int place = movePlace(kind);
+                Storage.move(this, place, arg != null ? new File(arg) : null, ranBefore, w -> status = w);
+                return place == Storage.CUSTOM ? "Your files are in " + arg + " now."
+                        : place == Storage.SD ? "Your files are on the SD card now." : "Your files are in internal storage now.";
             }
         }
+    }
+
+    /** Where a move job goes (Storage's places). */
+    private static int movePlace(String kind) {
+        return TO_CUSTOM.equals(kind) ? Storage.CUSTOM : TO_SD.equals(kind) ? Storage.SD : Storage.INTERNAL;
     }
 
     private PendingIntent launcher() {

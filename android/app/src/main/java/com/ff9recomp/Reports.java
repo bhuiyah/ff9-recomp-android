@@ -175,7 +175,7 @@ final class Reports {
                         .append(", thermal status ").append(pm.getCurrentThermalStatus());
         s.append("\n");
         GameInstall gi = new GameInstall(c);
-        s.append("Files: ").append(gi.files.getAbsolutePath()).append(Storage.onSd(c) ? " (SD card)" : "").append(", ")
+        s.append("Files: ").append(gi.files.getAbsolutePath()).append(Storage.place(c) == Storage.CUSTOM ? " (own folder" + (Storage.customProblem(c) != null ? ", unusable: " + Storage.customProblem(c) : "") + ")" : Storage.onSd(c) ? " (SD card)" : "").append(", ")
          .append(gi.files.getUsableSpace() >> 20).append(" MB free\n");
         s.append("Game: ").append(gi.hasGame() ? "imported" : "not imported");
         String missing = gi.hasGame() ? gi.missingMessage() : null;

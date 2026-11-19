@@ -45,7 +45,7 @@ import java.util.Map;
  * confirms, B goes back to the commands.
  */
 public class LauncherActivity extends Activity {
-    private static final int PICK_GAME = 1, PICK_SAVE = 2, EXPORT_SAVES = 3;
+    private static final int PICK_GAME = 1, PICK_SAVE = 2, EXPORT_SAVES = 3, PICK_STORAGE = 4;
     private static final int BG = Color.rgb(8, 9, 14), TEXT = 0xFFF2EEE2, DIM = 0xFFAEB0BC, ACCENT = 0xFFE8C66A;
     private static final int WIN_TOP = 0xFF5E6478, WIN_BOTTOM = 0xFF22252F, HOT_TOP = 0xFF8A8466, HOT_BOTTOM = 0xFF3E3A2A,
             BTN_TOP = 0xFF4A4F60, BTN_BOTTOM = 0xFF262935, BORDER = 0xFFDCD6C4, INNER = 0xFF3A3F50;
@@ -163,6 +163,10 @@ public class LauncherActivity extends Activity {
         refresh();
         if (Storage.sdMissing(this)) content.post(() -> message("SD card not found",
                 "Your game, mods and saves are on an SD card that isn't inserted. Put it back in, or move the files to internal storage under Game files."));
+        String customProblem = Storage.customProblem(this);
+        if (customProblem != null) content.post(() -> message("Your folder can't be used",
+                customProblem + ". Until that is fixed the launcher uses the app's own folder, so your game, mods and saves are missing. "
+                + "Game files > Storage > Choose another folder asks for the access again."));
         (ready() ? playButton : nav.get(page)).requestFocus();
         handleTestIntent(getIntent());
         if (!Updater.busy && System.currentTimeMillis() - Updater.lastCheck > 3600_000L) checkUpdates(false);
@@ -187,6 +191,7 @@ public class LauncherActivity extends Activity {
         super.onResume();
         Sfx.load(this);
         hideSystemBars();
+        if (wantStorageFolder) storageAccessBack();   // back from Android's All files access screen
         if (!busy) { View f = getCurrentFocus(); refresh(); if (f != null && !inContent(f)) f.requestFocus(); }
         // Back from the game. Once it has closed (not just gone to the background), send what Upload wrote to Steam.
         if (cloudAfterGame && !busy && cloudSaves() && TestControl.gamePid(this) <= 0) {
@@ -1461,10 +1466,18 @@ public class LauncherActivity extends Activity {
         TextView h = heading("Storage");
         h.setPadding(0, dp(14), 0, dp(4));
         col.addView(h);
-        col.addView(note("The game, mods and saves are " + (Storage.onSd(this) ? "on the SD card" + (Storage.sdMissing(this) ? " (not inserted)" : "") : "in internal storage")
-                + ", " + Storage.human(install.files.getUsableSpace()) + " free there. Moving copies everything, then removes the old copy."));
+        int place = Storage.place(this);
+        File custom = Storage.customRoot(this);
+        String customProblem = Storage.customProblem(this);
+        col.addView(note("The game, mods and saves are "
+                + (place == Storage.CUSTOM ? "in " + custom.getAbsolutePath() + (customProblem != null ? " (not usable now: " + customProblem + "; the app's own folder is used until then)" : "")
+                   : place == Storage.SD ? "on the SD card" + (Storage.sdMissing(this) ? " (not inserted)" : "") : "in internal storage")
+                + ", " + Storage.human(install.files.getUsableSpace()) + " free there. Moving copies everything, then removes the old copy. "
+                + "A folder of your own (for example /sdcard/FF9Recomp) is easy to back up or sync, and needs Android's \"All files access\"."));
         ViewGroup st = buttons();
-        st.addView(button(Storage.onSd(this) ? "Move to internal storage" : "Move to the SD card", v -> moveStorage()));
+        if (place != Storage.INTERNAL) st.addView(button("Move to internal storage", v -> moveStorage(Storage.INTERNAL, null)));
+        if (place != Storage.SD) st.addView(button("Move to the SD card", v -> moveStorage(Storage.SD, null)));
+        st.addView(button(place == Storage.CUSTOM ? "Choose another folder" : "Use your own folder", v -> customStorage()));
         col.addView(st);
 
         h = heading("App");
@@ -1664,12 +1677,93 @@ public class LauncherActivity extends Activity {
         startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PICK_GAME);
     }
 
-    private void moveStorage() {
-        boolean toSd = !Storage.onSd(this);
-        if (toSd && Storage.sdRoot(this) == null) { status.setText("No SD card is inserted."); return; }
-        if (TestControl.gamePid(this) > 0) { status.setText("Leave the game first."); return; }
-        if (JobService.busy()) { status.setText(JobService.title(JobService.running) + " is running: pause it first."); return; }
-        startJob(toSd ? JobService.TO_SD : JobService.TO_INTERNAL, null);
+    /** Nothing is using the files now (a job, the game), else says so and returns false. */
+    private boolean canMoveStorage() {
+        if (TestControl.gamePid(this) > 0) { status.setText("Leave the game first."); return false; }
+        if (JobService.busy()) { status.setText(JobService.title(JobService.running) + " is running: pause it first."); return false; }
+        return true;
+    }
+
+    /** Game files > Storage: move everything to internal storage, the SD card or a folder of the player's (JobService). */
+    private void moveStorage(int place, File custom) {
+        if (place == Storage.SD && Storage.sdRoot(this) == null) { status.setText("No SD card is inserted."); return; }
+        if (!canMoveStorage()) return;
+        startJob(place == Storage.CUSTOM ? JobService.TO_CUSTOM : place == Storage.SD ? JobService.TO_SD : JobService.TO_INTERNAL,
+                place == Storage.CUSTOM ? custom.getAbsolutePath() : null);
+    }
+
+    /** Use your own folder sent the player to grant All files access: pick the folder when they are back. */
+    private boolean wantStorageFolder;
+
+    /** Game files > Storage > Use your own folder (FF7Recomp's GitHub #61): All files access first, then the folder. */
+    private void customStorage() {
+        if (!canMoveStorage()) return;
+        if (Storage.allFilesAccess(this)) { pickStorageFolder(); return; }
+        ask("All files access", "To keep your game, mods and saves in a folder you choose, FF9Recomp needs Android's \"All files access\" "
+                + "(without it, apps can only use their own Android/data folder). Turn it on for FF9Recomp on the next screen, "
+                + "then go back and pick the folder.", "Continue", () -> {
+            wantStorageFolder = true;
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            Uri.parse("package:" + getPackageName())));
+                } catch (Exception e) {
+                    startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                }
+            } else {
+                requestPermissions(new String[] { android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                        android.Manifest.permission.READ_EXTERNAL_STORAGE }, 10);
+            }
+        });
+    }
+
+    private void pickStorageFolder() {
+        startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PICK_STORAGE);
+    }
+
+    /** Back with All files access: a custom folder that only lacked it is usable again (use it), else pick the folder. */
+    private void storageAccessBack() {
+        wantStorageFolder = false;
+        if (!Storage.allFilesAccess(this)) return;
+        if (Storage.place(this) == Storage.CUSTOM && Storage.customProblem(this) == null) {
+            install = new GameInstall(this);
+            refresh();
+            message("Your folder", "FF9Recomp uses " + install.files.getAbsolutePath() + " again.");
+        } else pickStorageFolder();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (req == 10 && wantStorageFolder) storageAccessBack();
+    }
+
+    /** The folder picked for Game files > Storage > Use your own folder. */
+    private void pickedStorageFolder(Uri tree) {
+        File to = Storage.treeToPath(tree);
+        String why = Storage.customRefusal(this, to);
+        if (why != null) { message("Not moved", why); return; }
+        if (to.isDirectory() && !Storage.emptyEnough(to)) {
+            if (!Storage.looksLikeOurs(to)) {
+                message("Not moved", to.getAbsolutePath() + " already has other files in it. Pick an empty folder, "
+                        + "or create a new one in the folder picker.");
+                return;
+            }
+            ask("Use the files there?", to.getAbsolutePath() + " already has FF9Recomp's files in it (a backup, or a synced copy). "
+                    + "Use the files there? Your current files stay where they are (" + install.files.getAbsolutePath()
+                    + "); delete them yourself once you no longer need them.", "Use them", () -> {
+                if (!canMoveStorage()) return;
+                try {
+                    Storage.useCustom(this, to);
+                    install = new GameInstall(this);
+                    refresh();
+                    status.setText("FF9Recomp uses " + to.getAbsolutePath() + " now.");
+                } catch (java.io.IOException e) { message("Not changed", e.getMessage()); }
+            });
+            return;
+        }
+        ask("Move your files", "Move your game, mods and saves (" + Storage.human(Storage.size(install.files) - Storage.size(new File(install.files, "runtime")))
+                + ") to " + to.getAbsolutePath() + "?", "Move", () -> moveStorage(Storage.CUSTOM, to));
     }
 
     private void checkUpdates(boolean loud) {
@@ -1841,6 +1935,7 @@ public class LauncherActivity extends Activity {
             return;
         }
         if (req == EXPORT_SAVES && res == RESULT_OK && data != null) { exportSaves(data.getData()); return; }
+        if (req == PICK_STORAGE) { if (res == RESULT_OK && data != null) pickedStorageFolder(data.getData()); return; }
         if (req != PICK_GAME || res != RESULT_OK || data == null) return;
         Uri tree = data.getData();
         // kept, so an import that was paused (or stopped by Android) can read the folder again later

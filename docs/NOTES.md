@@ -673,3 +673,27 @@ The swirl stayed black. Three things, all needed:
 - Tested on the Thor: PlayStation font, ComingSoon from /system/fonts and a copy in files/fonts
   draw the battle menu (-memoria-battle 336); the list opens on the current font, and the game's /
   PlayStation choices write Memoria's values.
+
+## Language, stretched picture, portrait (0.1.30, issues 4, 32, 2, 8)
+
+- Language (Settings > Language): the game keeps its language in its system save data
+  (SettingsState.ReadSystemData: metaData.SelectedLanguage; PlayerPrefs "Language" is only written
+  after). Memoria's [VoiceActing] ForceLanguage overrides it, but Memoria reads no key of a section
+  whose Enabled is 0 (and turning voice acting on changes how dialogs close). The launcher keeps
+  "language" (-1, or 0-6: US UK JP GR FR IT ES); GameActivity passes FF9_LANGUAGE; the engine
+  (Native/Compat.LanguageTick, end of the first frame) sets Configuration.VoiceActing.ForceLanguage
+  before GUIManager.Awake reads the system data. Tested: Español gives the Spanish title
+  (CONTINUAR, ES); back to "As chosen on the title screen" gives English again.
+- Picture (Settings > Display > Picture): 1 stretches narrow areas: Memoria's PSXCameraAspect
+  narrows the field camera's Camera.rect (NarrowMapList fields; 4:3 without widescreen); with
+  FF9_STRETCH the pipeline draws a full-height camera at least half wide across the whole width,
+  keeping its projection (Aspect from its rect). 2 also renders 16:9 on wider screens and lets the
+  display stretch it (GameActivity: setFixedSize from the view's layout, with Resolution).
+  Battles already fill a 2316x1080 screen; fields with narrow cameras did not. Tested with
+  wm size 2316x1080 in Baku's room (narrow): both fill; speech bubbles still point at the speaker.
+- Portrait (Settings > Display): FF7Recomp's layout. SENSOR_PORTRAIT; while the window is tall the
+  game is a 16:9 strip on top (GameFrame), CompanionView under it (weight 2), the pad under that
+  (weight 3); sideways it is the usual layout. The second-screen Presentation is not used. The
+  Thor's main screen never turns upright (wm size and user-rotation don't change it); tested in a
+  tall multi-window (am start --windowingMode 6): the layout came up, 60 FPS, panels with
+  portraits, the pad's Down moved the battle cursor (a press of 150 ms; adb's tap is too short).

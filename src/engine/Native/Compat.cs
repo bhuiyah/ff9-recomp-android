@@ -31,6 +31,27 @@ public static class Compat {
         ProfPostRender.Install();
     }
 
+    // The launcher's Language (FF9_LANGUAGE 0-6: US, UK, JP, German, French, Italian, Spanish;
+    // GitHub issue 4). The game keeps its language in its system save data (SettingsState.
+    // ReadSystemData), and Memoria's [VoiceActing] ForceLanguage replaces that at each start, but
+    // Memoria reads no key of a section whose Enabled is 0, and turning voice acting on changes how
+    // dialogs close. So Configuration.VoiceActing.ForceLanguage (a static field, filled from the ini
+    // when the class is first used) is set here at the end of the first frame, before the scene with
+    // GUIManager, whose Awake reads the system data, is loaded. The title's language button then
+    // answers with Memoria's "forced" sound, as it does with ForceLanguage set in the ini.
+    static bool languageDone;
+    public static void LanguageTick() {
+        if (languageDone) return;
+        languageDone = true;
+        if (!int.TryParse(Environment.GetEnvironmentVariable("FF9_LANGUAGE"), out int n) || n < 0 || n > 6) return;
+        try {
+            var f = Type.GetType("Memoria.Configuration+VoiceActing, Assembly-CSharp")?.GetField("ForceLanguage", BindingFlags.Static | BindingFlags.Public);
+            if (f == null || f.FieldType != typeof(int)) { Log.Warn("language: this Memoria has no VoiceActing.ForceLanguage; the game's own choice stays"); return; }
+            f.SetValue(null, n);
+            Log.Info($"language: {n}, the launcher's choice");
+        } catch (Exception e) { Log.Warn("language: " + (e.InnerException ?? e).Message); }
+    }
+
     // SoLoud (2) is the only sound backend there is on Android. The launcher writes Backend = 2
     // into the main Memoria.ini, but Memoria reads each active mod's own Memoria.ini over it, and
     // Ferny Fantasy IX's sets [Audio] Backend = 1 (SaXAudio, a Windows DLL): SoundLib.Awake threw,

@@ -393,7 +393,7 @@ public class LauncherActivity extends Activity {
 
     private static final String[][] GROUPS = {
         { "Frame rate", "fps" },
-        { "Display", "resolution", "widescreen", "skip_intros", "crt_filter", "show_fps" },
+        { "Display", "resolution", "stretch", "widescreen", "portrait", "skip_intros", "crt_filter", "show_fps" },
         { "Game", "start", "boosters", "speed", "turbo_dialog" },
         { "Controls", "swap_confirm", "analog_run", "touch_controls", "rumble" },
         { "Screens", "bottom_screen", "bottom_buttons", "panel_dim", "swap_screens" },
@@ -407,8 +407,41 @@ public class LauncherActivity extends Activity {
             case "start": return new String[] { "As shipped", "Straight back to the place you were last" }[i];
             case "resolution": return new String[] { "The screen's own", "Cooler, a little softer", "Coolest, for weaker devices", "Blocky: only when the GPU is what holds it back" }[i];
             case "touch_controls": return new String[] { "Only when no controller is connected", "Always on screen", "Never" }[i];
+            case "stretch": return new String[] { "Black bars where the picture is narrower than the screen",
+                    "Areas drawn 4:3 are stretched sideways to the screen's width",
+                    "Also the 16:9 picture on wider screens (most phones), as FF7Recomp's stretch" }[i];
             default: return null;
         }
+    }
+
+    // ---- the game's language, before it starts (GitHub issue 4, as FF7Recomp has it). The game
+    // keeps its language in its system save data, which its title screen's language button
+    // changes; a choice here replaces it each time the game starts (FF9_LANGUAGE: engine
+    // Native/Compat.cs sets Memoria's ForceLanguage). -1 leaves it to the game.
+    static final String[][] LANGUAGES = {
+        { "-1", "As chosen on the title screen" }, { "0", "English (US)" }, { "1", "English (UK)" }, { "2", "日本語" },
+        { "3", "Deutsch" }, { "4", "Français" }, { "5", "Italiano" }, { "6", "Español" },
+    };
+
+    private void languageSection(LinearLayout col) {
+        TextView h = heading("Language");
+        h.setPadding(0, dp(14), 0, dp(4));
+        col.addView(h);
+        col.addView(note("The game's text and menus, set each time the game starts. \"As chosen on the title screen\" leaves it to the game's own language button."));
+        RadioGroup rg = new RadioGroup(this);
+        String cur = String.valueOf(Settings.prefs(this).getInt("language", -1));
+        for (String[] l : LANGUAGES) {
+            RadioButton r = new RadioButton(this);
+            r.setId(View.generateViewId());
+            r.setText(l[1]);
+            rg.addView(r);
+            if (l[0].equals(cur)) r.setChecked(true);
+            r.setOnClickListener(x -> {
+                Settings.prefs(this).edit().putInt("language", Integer.parseInt(l[0])).apply();
+                status.setText(l[0].equals("-1") ? "The game starts in the language chosen on its title screen." : "The game starts in " + l[1] + ".");
+            });
+        }
+        col.addView(rg);
     }
 
     private View settingsPage() {
@@ -451,6 +484,7 @@ public class LauncherActivity extends Activity {
                 }
             }
         }
+        languageSection(col);
         TextView gh = heading("Guide");
         gh.setPadding(0, dp(14), 0, dp(4));
         col.addView(gh);

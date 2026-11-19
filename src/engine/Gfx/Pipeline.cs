@@ -654,6 +654,19 @@ public static class Pipeline {
         GL.glBindFramebuffer(GL.FRAMEBUFFER, RenderTargets.CurrentFbo);
     }
 
+    // Settings > Picture > Stretch (FF9_STRETCH 1 or 2; GitHub issues 4 and 32). Memoria draws the
+    // fields in NarrowMapList (backgrounds 320 pixels wide) and, without widescreen, everything 4:3,
+    // by narrowing the camera's viewport (PSXCameraAspect sets Camera.rect), with black at the sides.
+    // Stretched, such a camera draws across the whole width: its projection stays the narrow one
+    // (Aspect comes from its rect), so the picture is widened, not shown further to the sides. Only
+    // a full-height camera at least half the width: a small inset view (a mini map) keeps its rect.
+    static readonly bool stretchNarrow = Environment.GetEnvironmentVariable("FF9_STRETCH") is "1" or "2";
+    static bool StretchNarrow(NCamera cam) {
+        if (!stretchNarrow) return false;
+        var r = cam.ViewportRect;
+        return r.x > 0.001f && r.width < 0.999f && r.width >= 0.5f && r.y <= 0.01f && r.height >= 0.99f;
+    }
+
     static void RenderCameraOnce(NCamera cam, UnityEngine.Shader? replacement, string? replacementTag) {
         Camera = cam;
         Cameras.Current = cam;
@@ -661,6 +674,7 @@ public static class Pipeline {
         var target = cam.Target != null ? Textures.Of(cam.Target) as NRenderTexture : null;
         RenderTargets.Set(target);
         var pr = cam.PixelRect;
+        if (target == null && StretchNarrow(cam)) pr = new Rect(0, pr.y, cam.TargetW, pr.height);
         GL.glViewport((int)pr.x, (int)pr.y, (int)pr.width, (int)pr.height);
         GL.glEnable(GL.SCISSOR_TEST);
         GL.glScissor((int)pr.x, (int)pr.y, (int)pr.width, (int)pr.height);

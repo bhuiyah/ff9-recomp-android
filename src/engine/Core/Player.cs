@@ -184,6 +184,7 @@ public static class Player {
         MusicTrace.Tick();
         ImmortalTest.Tick();
         HarmonyTest.Tick();
+        Native.Compat.LanguageTick();
         TestLoad.Tick();
         TextInput.Tick();
         Widescreen.Tick();

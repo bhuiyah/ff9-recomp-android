@@ -44,21 +44,32 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         current = this;
         Reports.installCrashHandler(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        root = new android.widget.FrameLayout(this);
+        android.content.SharedPreferences prefs = getSharedPreferences("launcher", MODE_PRIVATE);
+        root = new GameFrame(this);
         SurfaceView v = new SurfaceView(this);
         v.getHolder().addCallback(this);
-        // Settings > Resolution: a smaller surface, scaled up by the display hardware (no cost)
-        int res = getSharedPreferences("launcher", MODE_PRIVATE).getInt("resolution", 0);
-        if (res > 0) {
-            android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
-            getDisplay().getRealMetrics(dm);
-            float f = res == 1 ? 0.75f : res == 2 ? 0.5f : 0.25f;
-            int lw = Math.max(dm.widthPixels, dm.heightPixels), lh = Math.min(dm.widthPixels, dm.heightPixels);
-            v.getHolder().setFixedSize(Math.round(lw * f) & ~1, Math.round(lh * f) & ~1);
-        }
+        // The surface's buffer, from the size the view is laid out at:
+        // - Settings > Resolution: a smaller buffer, scaled up by the display hardware (no cost)
+        // - Settings > Picture > Stretch everything (GitHub issue 4, as FF7Recomp's): on a screen
+        //   wider than 16:9 the game draws 16:9 and the display stretches it sideways
+        int res = prefs.getInt("resolution", 0);
+        int stretch = prefs.getInt("stretch", 0);
+        float f = res == 1 ? 0.75f : res == 2 ? 0.5f : res == 3 ? 0.25f : 1f;
+        v.addOnLayoutChangeListener((x, l, t, r, bt, ol, ot, or, ob) -> {
+            int w = r - l, h = bt - t;
+            if (w <= 0 || h <= 0) return;
+            int bw = stretch == 2 && w * 9 > h * 16 + 9 ? Math.round(h * 16f / 9f) : w;
+            if (f == 1f && bw == w) v.getHolder().setSizeFromLayout();
+            else v.getHolder().setFixedSize(Math.max(2, Math.round(bw * f) & ~1), Math.max(2, Math.round(h * f) & ~1));
+        });
         root.addView(v);
+        // Settings > Portrait (GitHub issues 2 and 8): the game on top, the panels and pad under it
+        portrait = prefs.getBoolean("portrait", false);
+        if (portrait) {
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+            panel = new CompanionView(this);
+        }
         // the on-screen pad (Settings > Touch controls: Auto shows it when no controller is connected)
-        android.content.SharedPreferences prefs = getSharedPreferences("launcher", MODE_PRIVATE);
         touchMode = prefs.getInt("touch_controls", 0);
         if (touchMode != 2) {
             touch = new TouchControls(this, (tb, tl, tr) -> { touchButtons = tb; touchLt = tl; touchRt = tr; send(); });
@@ -77,7 +88,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         }
         rumble = prefs.getInt("rumble", 1);
         crt = prefs.getBoolean("crt_filter", false);
-        setContentView(root);
+        arrange(portrait && isTall());
         // the whole screen: draw behind the (hidden) system bars and into display cutouts, so devices
         // with a navigation bar don't keep its strip empty; anything uncovered is black, not the theme's grey
         getWindow().setDecorFitsSystemWindows(false);
@@ -88,7 +99,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         // Smooth 120: ask the display for its fastest mode at this resolution (the Thor's 120 Hz)
         preferRefreshRate(prefs.getInt("fps", 1) == 2 ? 120 : 60);
         startDisplayWatch(prefs.getInt("fps", 1));
-        if (prefs.getBoolean("bottom_screen", true)) showCompanion();
+        if (prefs.getBoolean("bottom_screen", true) && !portrait) showCompanion();
         ui.post(poller);
         updateTouch();
         hideSystemUi();
@@ -97,6 +108,49 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
             registerReceiver(testPad, padFilter, android.Manifest.permission.DUMP, null, RECEIVER_EXPORTED);
         else
             registerReceiver(testPad, padFilter, android.Manifest.permission.DUMP, null);
+    }
+
+    // ---- Portrait (GitHub issues 2 and 8; FF7Recomp's layout). The window held upright: the game
+    // across the top at 16:9; under it the panels the AYN Thor shows on its second screen
+    // (CompanionView, with its command deck), then the on-screen pad. A controller in use hides
+    // the pad and the panels take its room. Held sideways (or before the turn), the usual layout.
+    private boolean portrait, arrangedTall;
+    private CompanionView panel;
+
+    /** The game's frame: the whole window, or (tall) the window's width at 16:9. */
+    private static final class GameFrame extends android.widget.FrameLayout {
+        boolean fill = true;
+        GameFrame(android.content.Context c) { super(c); }
+        @Override protected void onMeasure(int w, int h) {
+            if (fill) { super.onMeasure(w, h); return; }
+            int width = MeasureSpec.getSize(w);
+            super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(Math.round(width * 9f / 16f), MeasureSpec.EXACTLY));
+        }
+    }
+
+    private boolean isTall() {
+        return getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT;
+    }
+
+    private void arrange(boolean tall) {
+        arrangedTall = tall;
+        for (View x : new View[] { root, panel, touch })
+            if (x != null && x.getParent() != null) ((android.view.ViewGroup) x.getParent()).removeView(x);
+        ((GameFrame) root).fill = !tall;
+        if (!tall) {
+            if (touch != null) root.addView(touch, 1, new android.widget.FrameLayout.LayoutParams(-1, -1));   // over the game, under the CRT lines and FPS
+            setContentView(root);
+            return;
+        }
+        android.widget.LinearLayout col = new android.widget.LinearLayout(this);
+        col.setOrientation(android.widget.LinearLayout.VERTICAL);
+        col.setBackgroundColor(0xFF000000);
+        col.addView(root, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        col.addView(panel, new android.widget.LinearLayout.LayoutParams(-1, 0, 2f));
+        if (touch != null) col.addView(touch, new android.widget.LinearLayout.LayoutParams(-1, 0, 3f));
+        setContentView(col);
+        Log.i(TAG, "portrait: the game on top, the panels and pad under it");
     }
 
     // ---- the second screen (AYN Thor's bottom screen): the panels, in a Presentation that never
@@ -521,6 +575,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     @Override
     public void onConfigurationChanged(android.content.res.Configuration c) {
         super.onConfigurationChanged(c);
+        if (portrait && isTall() != arrangedTall) arrange(isTall());   // turned upright or sideways
         ui.post(this::followGameDisplay);
     }
 
@@ -616,6 +671,10 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
                 Os.setenv("FF9_COMPANION", "1", true);
                 Os.setenv("FF9_WORLDMAP_DIR", new File(gi.files, "worldmap").getPath(), true);   // the panels' world map (Core/Companion.cs)
                 Os.setenv("FF9_UI_SOUNDS", Sfx.dir(this).getPath(), true);   // the launcher's menu sounds (Core/UiSounds.cs)
+                // Settings > Language (engine Native/Compat.cs; -1: the game's own choice)
+                Os.setenv("FF9_LANGUAGE", String.valueOf(getSharedPreferences("launcher", MODE_PRIVATE).getInt("language", -1)), true);
+                // Settings > Picture: narrow (4:3) areas stretched to the screen (engine Gfx/Pipeline.cs)
+                Os.setenv("FF9_STRETCH", String.valueOf(getSharedPreferences("launcher", MODE_PRIVATE).getInt("stretch", 0)), true);
                 Os.setenv("FF9_ACHIEVEMENTS", Achievements.file(this).getPath(), true);   // src/host/win32.c     // the game's state for the panels and save-state names
                 // Steam Cloud saves. Turns on the title screen's Cloud menu (src/host/win32.c) and tells the engine which folder it should use (Native/Compat.cs).
                 // The launcher syncs that folder with Steam.

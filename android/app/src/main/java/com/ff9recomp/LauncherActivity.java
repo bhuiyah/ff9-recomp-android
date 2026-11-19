@@ -367,9 +367,11 @@ public class LauncherActivity extends Activity {
         if (Settings.prefs(this).getBoolean("swap_screens", false)) {
             android.hardware.display.DisplayManager dm = (android.hardware.display.DisplayManager) getSystemService(DISPLAY_SERVICE);
             android.view.Display[] ds = dm.getDisplays(android.hardware.display.DisplayManager.DISPLAY_CATEGORY_PRESENTATION);
-            if (ds.length > 0) {
+            // not the main screen, which the Ayaneo Pocket DS also lists as a presentation display (issue 31)
+            int other = GameActivity.otherScreen(ds, android.view.Display.DEFAULT_DISPLAY);
+            if (other >= 0) {
                 android.app.ActivityOptions o = android.app.ActivityOptions.makeBasic();
-                o.setLaunchDisplayId(ds[0].getDisplayId());
+                o.setLaunchDisplayId(ds[other].getDisplayId());
                 startActivity(g.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK), o.toBundle());
                 return;
             }

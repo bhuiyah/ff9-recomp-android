@@ -111,12 +111,27 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         try { return nativeCompanion(); } catch (UnsatisfiedLinkError e) { return null; }
     }
 
+    /** The index in ds of the first display that isn't display notId, or -1. */
+    static int otherScreen(android.view.Display[] ds, int notId) {
+        int[] ids = new int[ds.length];
+        for (int i = 0; i < ds.length; i++) ids[i] = ds[i].getDisplayId();
+        return otherScreen(ids, notId);
+    }
+
+    static int otherScreen(int[] ids, int notId) {
+        for (int i = 0; i < ids.length; i++) if (ids[i] != notId) return i;
+        return -1;
+    }
+
     private void showCompanion() {
         android.hardware.display.DisplayManager dm = (android.hardware.display.DisplayManager) getSystemService(DISPLAY_SERVICE);
         android.view.Display[] ds = dm.getDisplays(android.hardware.display.DisplayManager.DISPLAY_CATEGORY_PRESENTATION);
         if (ds.length == 0) { Log.i(TAG, "no second display"); return; }
-        android.view.Display d = ds[0];
         android.view.Display mine = getDisplay();
+        // the Ayaneo Pocket DS lists its main screen as a presentation display too, first
+        // (GitHub issue 31): the second screen is the first one that isn't the game's own
+        int other = otherScreen(ds, mine != null ? mine.getDisplayId() : android.view.Display.DEFAULT_DISPLAY);
+        android.view.Display d = ds[other >= 0 ? other : 0];
         panelsFor = mine != null ? mine.getDisplayId() : -1;
         // which screens there are and where the game went (Report a problem has display.txt):
         // the Ayaneo Pocket DS doesn't always put the game where it was asked (GitHub issue 31)

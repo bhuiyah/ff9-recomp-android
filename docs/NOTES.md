@@ -710,4 +710,7 @@ The swirl stayed black. Three things, all needed:
   string's optional fifth offset, so older layouts still load). The finger that lands on the
   stick holds it until it lifts; the knob goes out as RX/RY (±32767, Y up), used by GameActivity
   while the real right stick is centred (Memoria's world map camera, [AnalogControl] RightStickCamera).
-- Not yet tried on the Thor (it was in use when this was built).
+- Tested on the Thor (touch_controls 1, touch_extra true, world map save 1:2): the stick, L3 and R3
+  show; dragging the stick turns the world map camera, which stops when the finger lifts (the knob
+  re-centres). L3's high speed mode had no visible effect to measure; its bit takes the same path
+  as the other on-screen buttons.

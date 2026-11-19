@@ -727,3 +727,20 @@ The swirl stayed black. Three things, all needed:
 - Tested on the Thor (touch_controls 1, world map save 1:2): the row opens, High speed and 9999
   damage turn on and off (log "panel: booster HighSpeedMode on/off", "Attack9999 on/off", the
   pills turn gold), BOOST closes the row, and Y still opens the menu.
+
+## Steam Cloud Upload goes to Steam at once (0.1.35, GitHub #21)
+
+- GameActivity watches the Cloud folder (FileObserver CLOSE_WRITE, not MOVED_TO: the sync's own
+  download is a rename) when Steam Cloud saves are on and Game files > Saves > "Upload to Steam
+  right away" (pref `cloud_upload_now`, default true) is ticked. When the engine's Upload writes
+  FF9_CloudSaveFile_ww.sav (or _jp), a thread in the game's process runs SteamFiles.syncCloud,
+  with toasts: "Sending your Cloud save to Steam...", then "Your Cloud save is on Steam.", or why
+  not (offline, or the error; the launcher's sync after the game is the safety net). A second
+  write while sending sends once more afterwards. With the option off nothing is watched.
+- Tested on the Thor, signed in to a Steam account that doesn't own FF9 (ownership ticket
+  AccessDenied for 377840), so nothing could reach Steam: writing the Cloud file into the folder
+  started the watcher, showed the first toast, and logged the sync's "does not own" failure and
+  its toast. With the option off, the same write started nothing. The title screen's Upload was
+  greyed out on the Thor: CloudUI enables it only when the save system names a latest slot
+  (GetLatestSlotAndSave); most likely these saves gave none (not checked further), so the real
+  button wasn't pressed. A real Upload to Steam with an owning account is untested.

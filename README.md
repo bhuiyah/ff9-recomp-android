@@ -145,9 +145,11 @@ With it on, the **Cloud Data** menu on the game's title screen works as it does 
 - **Download** replaces the saves on the device with the ones there.
 
 Nothing goes to Steam on its own: your saves only reach Steam Cloud when you choose Upload, as on
-the PC. The launcher syncs with Steam before you play and after you leave the game, so an Upload
-reaches Steam once the game has closed, and an upload made on the PC is there the next time you
-press Play. **Sync now** syncs straight away. If the Cloud save changed on both sides, the newer
+the PC. An Upload goes to Steam right away, while the game keeps running, with a message at the
+bottom of the screen when it's there (**Upload to Steam right away**, on by default; with it off,
+an Upload reaches Steam once the game has closed). The launcher also syncs with Steam before you
+play and after you leave the game, so an upload made on the PC is there the next time you press
+Play. **Sync now** syncs straight away. If the Cloud save changed on both sides, the newer
 one is kept. Any copy about to be replaced is first saved to
 `Android/data/com.ff9recomp/files/steam/cloud-backup`. Offline, the game starts as usual and the
 next sync catches up.

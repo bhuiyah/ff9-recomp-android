@@ -1512,8 +1512,13 @@ public class LauncherActivity extends Activity {
         });
         col.addView(cb);
         col.addView(note("Turns on the Cloud Data menu on the game's title screen, to upload and download your saves with Steam Cloud. "
-        + "An upload reaches Steam when you leave the game."));
+        + "The launcher also syncs with Steam before you play and after you leave the game."));
         if (on) {
+            CheckBox now = new CheckBox(this);       // GitHub issue 21
+            now.setText(withNote("Upload to Steam right away", "Upload on the title screen sends your save at once, while the game runs"));
+            now.setChecked(Settings.cloudUploadNow(this));
+            now.setOnCheckedChangeListener((x, want) -> p.edit().putBoolean(Settings.CLOUD_UPLOAD_NOW, want).apply());
+            col.addView(now);
             String last = p.getString(Settings.CLOUD_LAST, null);
             col.addView(text(last != null ? "Last sync " + last : "Not synced yet.", 13, DIM));
             ViewGroup row = buttons();

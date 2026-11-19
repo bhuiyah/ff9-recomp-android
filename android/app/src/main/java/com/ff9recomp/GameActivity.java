@@ -617,8 +617,73 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         panelsHidden = guideTabHidden = hostSentBack = false;
     }
 
+    // ---- Steam Cloud: Upload goes to Steam at once (GitHub issue 21)
+    // The title screen's Upload writes FF9_CloudSaveFile_ww.sav into the Cloud folder (engine
+    // Native/Compat.cs); the launcher used to send it to Steam only after the game closed, so a
+    // device left running or asleep kept it. Now the write itself starts the launcher's sync
+    // (SteamFiles.syncCloud, both directions as before), with a toast. The launcher's syncs
+    // before Play and after the game stay as the safety net. Nothing is written to the launcher's
+    // settings from here: this process's copy of them could overwrite the launcher's.
+    private android.os.FileObserver cloudWatch;
+    private final Object cloudLock = new Object();
+    private boolean cloudBusy, cloudAgain;
+    private static final java.util.regex.Pattern CLOUD_SAVE = java.util.regex.Pattern.compile("(?i)ff9_cloudsavefile_(ww|jp)\\.sav");
+
+    private void watchCloud(File dir) {
+        if (cloudWatch != null) return;
+        cloudWatch = new android.os.FileObserver(dir, android.os.FileObserver.CLOSE_WRITE) {   // not MOVED_TO: the sync's own download is a rename
+            @Override public void onEvent(int event, String path) {
+                if (path != null && CLOUD_SAVE.matcher(path).matches()) uploadCloud(dir);
+            }
+        };
+        cloudWatch.startWatching();
+        android.util.Log.i(TAG, "cloud: uploads go to Steam at once (" + dir + ")");
+    }
+
+    private void cloudToast(String m) {
+        ui.post(() -> android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_LONG).show());
+    }
+
+    private boolean online() {
+        android.net.ConnectivityManager cm = getSystemService(android.net.ConnectivityManager.class);
+        android.net.NetworkCapabilities c = cm == null ? null : cm.getNetworkCapabilities(cm.getActiveNetwork());
+        return c != null && c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                && c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+    }
+
+    private void uploadCloud(File dir) {
+        synchronized (cloudLock) {
+            if (cloudBusy) { cloudAgain = true; return; }     // written again while sending: send once more after
+            cloudBusy = true;
+        }
+        new Thread(() -> {
+            while (true) {
+                synchronized (cloudLock) { cloudAgain = false; }
+                String m;
+                if (!online()) {
+                    m = "Steam Cloud: you're offline. Your Cloud save goes to Steam when you leave the game while online.";
+                } else {
+                    cloudToast("Sending your Cloud save to Steam...");
+                    try {
+                        SteamFiles.CloudResult r = new SteamFiles(new SteamLink(this)).syncCloud(dir);
+                        m = !r.up.isEmpty() && r.down.isEmpty() ? "Your Cloud save is on Steam." : "Steam Cloud: " + r;
+                    } catch (Exception e) {
+                        android.util.Log.w(TAG, "cloud upload", e);
+                        m = "Steam Cloud upload failed: " + SteamLink.message(e) + ". The launcher tries again when you leave the game.";
+                    }
+                }
+                android.util.Log.i(TAG, "cloud: " + m);
+                cloudToast(m);
+                synchronized (cloudLock) {
+                    if (!cloudAgain) { cloudBusy = false; return; }
+                }
+            }
+        }, "cloud-upload").start();
+    }
+
     @Override
     protected void onDestroy() {
+        if (cloudWatch != null) { cloudWatch.stopWatching(); cloudWatch = null; }
         displayWatching = false;
         ui.removeCallbacks(displaySample);
         try { unregisterReceiver(testPad); } catch (Exception ignored) { }
@@ -684,6 +749,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
                     cloud.mkdirs();
                     Os.setenv("FF9_CLOUD_ENABLED", "1", true);
                     Os.setenv("FF9_CLOUD_DIR", cloud.getPath(), true);
+                    if (Settings.cloudUploadNow(this)) watchCloud(cloud);
                 } else {     // Clear them, in case this process ran the game earlier with them set.
                     Os.unsetenv("FF9_CLOUD_ENABLED");
                     Os.unsetenv("FF9_CLOUD_DIR");

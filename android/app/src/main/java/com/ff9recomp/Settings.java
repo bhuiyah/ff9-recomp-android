@@ -74,6 +74,9 @@ final class Settings {
     /** Steam Cloud saves on Game files > Saves. Whether syncing is on, and the result of the last sync shown there. */
     static final String CLOUD_SAVES = "cloud_saves", CLOUD_LAST = "cloud_last";
     static boolean cloudSaves(Context c) { return prefs(c).getBoolean(CLOUD_SAVES, false); }
+    /** Upload on the title screen's Cloud Data menu goes to Steam at once, while the game runs (GitHub issue 21). */
+    static final String CLOUD_UPLOAD_NOW = "cloud_upload_now";
+    static boolean cloudUploadNow(Context c) { return prefs(c).getBoolean(CLOUD_UPLOAD_NOW, true); }
 
     static int get(Context c, Option o) {
         SharedPreferences p = prefs(c);

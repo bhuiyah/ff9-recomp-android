@@ -149,6 +149,9 @@
 - `FF9_IL_DUMP=Type::Method:fromHex:toHex`: prints a game method's IL with tokens resolved (on the device;
   no .NET runtime on the PC). `FF9_WARP_WORLD=frame:wldMapNo`: rough world-map switch for tests.
 - Rumble reaches the game's XInput path (pad reported connected); FF9 vibrates only at scripted moments.
+- Rumble sticking (issues 39, 40): vib.VIB_service sends a level each tick only while the track's sample
+  is above zero, and nothing when it drops to zero, the field changes or its caller stops (PS1 pads were
+  rewritten every frame). The host treats a level not repeated for 200 ms as off (input.c ff9_rumble_now).
 - 2026-11-14: a shared save file (Steam forum, SavedData_ww.dat, slot 2: Alexandria, Gegalrich Shores on
   the world map, Dali Inn at Lv 99) is kept on the Thor only (/data/local/tmp/ff9/save_shared), never
   in the repository. `FF9_LOAD_FILE=frame:slot:file` (0-based; slot 2 FILE03 = 1:2) loads one from the

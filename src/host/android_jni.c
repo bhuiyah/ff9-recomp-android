@@ -95,11 +95,12 @@ JNIEXPORT jint JNICALL Java_com_ff9recomp_GameActivity_nativeRun(JNIEnv *env, jc
     _exit(r);
 }
 
-extern volatile float ff9_rumble_left, ff9_rumble_right;
+void ff9_rumble_now(float *left, float *right);
 extern volatile uint32_t ff9_frames_shown;
 /* the game's rumble as two 0..255 values (left << 8 | right) */
 JNIEXPORT jint JNICALL Java_com_ff9recomp_GameActivity_nativeRumble(JNIEnv *env, jclass cls) {
-    int l = (int)(ff9_rumble_left * 255 + 0.5f), r = (int)(ff9_rumble_right * 255 + 0.5f);
+    float fl, fr; ff9_rumble_now(&fl, &fr);
+    int l = (int)(fl * 255 + 0.5f), r = (int)(fr * 255 + 0.5f);
     if (l < 0) l = 0; if (l > 255) l = 255; if (r < 0) r = 0; if (r > 255) r = 255;
     return l << 8 | r;
 }

@@ -34,13 +34,32 @@ EXPORT uint32_t XInputGamePadGetState(uint32_t player, XInputRawState *s) {
     return 0;
 }
 
-/* the game's rumble (both motors, 0..1): the APK reads it (nativeRumble) and drives a vibrator */
+/* the game's rumble (both motors, 0..1): the APK reads it (nativeRumble) and drives a vibrator.
+   The game's vibration player (vib.VIB_service) sends a level on every tick whose sample is above
+   zero but nothing on ticks whose sample is zero, and nothing when a field changes or its caller
+   stops running; on the PS1 the pad's motor buffer was rewritten every frame, so those gaps were
+   silence. A level the game hasn't repeated for RUMBLE_HOLD_NS is therefore treated as off. */
 volatile float ff9_rumble_left, ff9_rumble_right;
+static int64_t rumble_at;
+static int rumble_stale_logged;
+#define RUMBLE_HOLD_NS 200000000LL
 EXPORT void XInputGamePadSetState(uint32_t player, float left, float right) {
     if (player != 0) return;
     if ((left > 0) != (ff9_rumble_left > 0) || (right > 0) != (ff9_rumble_right > 0)) printf("rumble %.2f %.2f\n", left, right);
     ff9_rumble_left = left;
     ff9_rumble_right = right;
+    __atomic_store_n(&rumble_at, now_ns(), __ATOMIC_RELEASE);
+}
+/* the motors' levels now (0..1 each): 0 once the game has stopped repeating its level */
+void ff9_rumble_now(float *left, float *right) {
+    float l = ff9_rumble_left, r = ff9_rumble_right;
+    if (l > 0 || r > 0) {
+        if (now_ns() - __atomic_load_n(&rumble_at, __ATOMIC_ACQUIRE) > RUMBLE_HOLD_NS) {
+            if (!rumble_stale_logged) { rumble_stale_logged = 1; printf("rumble %.2f %.2f not repeated: off\n", l, r); }
+            l = r = 0;
+        } else rumble_stale_logged = 0;
+    }
+    *left = l; *right = r;
 }
 
 /* frames shown (FF9Engine Gfx/Device.Present), for the app's FPS counter */

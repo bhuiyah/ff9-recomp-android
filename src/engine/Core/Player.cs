@@ -251,12 +251,24 @@ public static class Player {
 
     public static int PendingStarts => pendingStart.Count;
 
+    /// A destroyed behaviour leaves the update list and the queue for Start (one destroyed before
+    /// its Start stayed queued for good, and RunStarts sorted and walked the queue twice a frame:
+    /// GitHub #47).
+    public static void Forget(NMonoBehaviour b) {
+        Behaviours.Remove(b);
+        pendingStart.Remove(b);
+    }
+
     static void RunStarts() {
         while (pendingStart.Count > 0) {
             var list = pendingStart.ToArray();
             pendingStart.Clear();
             foreach (var b in list.OrderBy(b => b.ExecutionOrder)) {
-                if (b.Started || !Runs(b)) { if (!b.Started) pendingStart.Add(b); continue; }
+                if (b.Started) continue;
+                // one that can't run now leaves the queue: enabling it or activating its object
+                // calls Awaken, which queues it again (inactive menus kept hundreds queued, sorted
+                // and walked twice a frame for the rest of the session: GitHub #47)
+                if (!Runs(b)) { if (b.EnabledCalled && b.Managed != null && Registry.Get(b.Managed) == b) pendingStart.Add(b); continue; }
                 b.Started = true;
                 ScriptMethods.Call(b, b.Methods.Start);
             }
@@ -351,7 +363,7 @@ public static class Destroyer {
                         if (b.Awoken) ScriptMethods.Call(b, b.Methods.OnDestroy);
                         Coroutines.Stop(b);
                         Coroutines.CancelInvoke(b, null);
-                        Player.Behaviours.Remove(b);
+                        Player.Forget(b);
                     }
                     Registry.Remove(c);
                 }
@@ -366,7 +378,7 @@ public static class Destroyer {
                     if (mb.Awoken) ScriptMethods.Call(mb, mb.Methods.OnDestroy);
                     Coroutines.Stop(mb);
                     Coroutines.CancelInvoke(mb, null);
-                    Player.Behaviours.Remove(mb);
+                    Player.Forget(mb);
                 }
                 c.GameObject.Components.Remove(c);
                 Registry.Remove(c);

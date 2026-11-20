@@ -779,3 +779,17 @@ The swirl stayed black. Three things, all needed:
   re-centres on release (he stops), a light push moves the knob part way, and in the menu two
   short pushes down moved the cursor (with the menu's own hold repeat, Item to Card). With the
   option off the D-pad still draws and lights the pressed arrow.
+
+## Start queue after menus; touch vibration (0.1.38, GitHub #47, #44)
+
+- #47, the game slower after the Ability menu: behaviours enabled while their object was then
+  deactivated before Start (the menus' rows and panels) stayed in Player.pendingStart for the rest
+  of the session, and RunStarts sorted and walked that queue twice a frame. Thor, world map save
+  1:2, FF9_TRACE_PROFILE=120: "waiting to start" 284 -> 1008 after Ability > Equip, logic 6.10 ->
+  8.5 ms in the menu and 6.54 ms after it. RunStarts now drops entries that can't run (Awaken
+  queues them again on enable/activation) and destroyed behaviours leave the queue
+  (Player.Forget). After: waiting 4 -> 2 -> 0, logic 5.9 -> 7.6 in the menu -> 6.0 after; battle
+  336 fine. The reporter's own sharper slowdown didn't reproduce with this save.
+- #44: Settings > On-screen controls > Size and layout: "Vibrate when a button is pressed" (pref
+  `touch_vibrate`, on by default; TestControl SET `--ez touch_vibrate false`) turns off the
+  touch controls' haptic feedback (setHapticFeedbackEnabled).

@@ -76,6 +76,14 @@ public class TouchLayoutActivity extends Activity {
             prefs.edit().putBoolean("touch_left_stick", on).apply();
         });
         panel.addView(left);
+        // GitHub #44: the short buzz on each press can be turned off
+        android.widget.CheckBox buzz = new android.widget.CheckBox(this);
+        buzz.setText("Vibrate when a button is pressed");
+        buzz.setTextColor(0xFFFFFFFF);
+        buzz.setTextSize(15);
+        buzz.setChecked(prefs.getBoolean("touch_vibrate", true));
+        buzz.setOnCheckedChangeListener((cb, on) -> prefs.edit().putBoolean("touch_vibrate", on).apply());
+        panel.addView(buzz);
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER);
         Button reset = new Button(this);

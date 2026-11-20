@@ -76,6 +76,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
             touch.setExtra(prefs.getBoolean("touch_extra", false));   // right stick, L3, R3 (as FF7Recomp's GitHub #62)
             touch.setLeftStick(prefs.getBoolean("touch_left_stick", false));   // GitHub #44
             touch.setLayout(prefs.getString("touch_layout", ""));
+            touch.setHapticFeedbackEnabled(prefs.getBoolean("touch_vibrate", true));   // GitHub #44
             root.addView(touch, new android.widget.FrameLayout.LayoutParams(-1, -1));
             ((android.hardware.input.InputManager) getSystemService(INPUT_SERVICE)).registerInputDeviceListener(deviceListener, null);
         }

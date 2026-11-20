@@ -74,6 +74,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
             panel = new CompanionView(this);
         }
         // the on-screen pad (Settings > Touch controls: Auto shows it when no controller is connected)
+        // Settings > Hotkeys: a button of the player's own for each hotkey (GitHub #51)
+        for (int i = 0; i < HOTKEYS.length; i++) hotkeyCode[i] = prefs.getInt(HOTKEYS[i], 0);
         touchMode = prefs.getInt("touch_controls", 0);
         if (touchMode != 2) {
             touch = new TouchControls(this, (tb, tl, tr, tlx, tly, trx, try_) -> { touchButtons = tb; touchLt = tl; touchRt = tr; touchLx = tlx; touchLy = tly; touchRx = trx; touchRy = try_; send(); });
@@ -928,6 +930,33 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         }
     }
 
+    // ---- Settings > Hotkeys: one button of the player's own choice per hotkey, on its own
+    // (controllers with buttons the game doesn't use, like the Retroid Pocket Classic's C and Z,
+    // GitHub #51). The key codes are in the launcher's settings; 0 = none. That button then does
+    // only the hotkey; the Select combos keep working.
+    static final String[] HOTKEYS = { "hk_speed", "hk_keep", "hk_guide", "hk_quit" };
+    private final int[] hotkeyCode = new int[HOTKEYS.length];
+
+    private boolean hotkey(KeyEvent e) {
+        int code = e.getKeyCode();
+        if (code == 0) return false;
+        int which = -1;
+        for (int i = 0; i < hotkeyCode.length; i++) if (hotkeyCode[i] == code) { which = i; break; }
+        if (which < 0) return false;
+        boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
+        if (which == 3) {                       // leave the game: held for a second, as Select+Start
+            if (down && e.getRepeatCount() == 0) ui.postDelayed(askQuit, 1000);
+            else if (e.getAction() == KeyEvent.ACTION_UP) ui.removeCallbacks(askQuit);
+            return true;
+        }
+        if (!down || e.getRepeatCount() != 0) return true;
+        Log.i(TAG, "hotkey " + HOTKEYS[which] + " (" + KeyEvent.keyCodeToString(code) + ")");
+        if (which == 0) commandFromPanel(1);
+        else if (which == 1) keepState();
+        else toggleGuide();
+        return true;
+    }
+
     private boolean keepHeld, guideHeld, speedHeld;
     private int keyLt, keyRt;
     private android.webkit.WebView guide;
@@ -1025,6 +1054,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
             if (e.getAction() == KeyEvent.ACTION_UP && (e.getKeyCode() == KeyEvent.KEYCODE_BUTTON_B || e.getKeyCode() == KeyEvent.KEYCODE_BACK)) finish();
             return true;
         }
+        if (hotkey(e)) return true;
         InputDevice dev = e.getDevice();
         if (dev != null && !dev.isVirtual() && !isGamepad(dev) && dev.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC) {
             int kb = keyboardBit(e.getKeyCode());

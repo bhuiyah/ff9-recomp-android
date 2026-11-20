@@ -499,6 +499,11 @@ public class LauncherActivity extends Activity {
                 + "  L1: on two-screen devices, the guide or the party panels on the second screen\n"
                 + "  Start (hold for a second): leave the game\n"
                 + "Keyboard: arrows or WASD move, Enter confirm, Esc cancel, Tab menu, Q/E L1/R1, Backslash Select, P Start."));
+        col.addView(note("Or give a hotkey a button of its own, such as one the game doesn't use (C, Z, L3, R3...). That button then does only the hotkey."));
+        ViewGroup hkb = buttons();
+        hotkeyLabels.clear();
+        for (int i = 0; i < GameActivity.HOTKEYS.length; i++) hkb.addView(hotkeyButton(i));
+        col.addView(hkb);
         languageSection(col);
         TextView gh = heading("Guide");
         gh.setPadding(0, dp(14), 0, dp(4));
@@ -530,6 +535,57 @@ public class LauncherActivity extends Activity {
         mr.addView(button("Edit Memoria.ini...", v -> editMemoriaIni()));
         col.addView(mr);
         return col;
+    }
+
+    private final java.util.List<Runnable> hotkeyLabels = new java.util.ArrayList<>();
+    private static final String[] HOTKEY_NAMES = { "Fast-forward", "Save state", "Second screen", "Leave the game" };
+
+    private static String keyName(int code) {
+        String n = KeyEvent.keyCodeToString(code);
+        if (n.startsWith("KEYCODE_BUTTON_")) n = n.substring(15);
+        else if (n.startsWith("KEYCODE_")) n = n.substring(8);
+        switch (n) { case "THUMBL": return "L3"; case "THUMBR": return "R3"; }
+        return n.replace('_', ' ');
+    }
+
+    /** Settings > Hotkeys: press the button to use for one hotkey (GitHub #51). The dialog's own
+     *  buttons are driven with the D-pad and A/B, so those can't be picked. */
+    private Button hotkeyButton(int i) {
+        String key = GameActivity.HOTKEYS[i];
+        Button[] b = new Button[1];
+        Runnable label = () -> {
+            int code = Settings.prefs(this).getInt(key, 0);
+            b[0].setText(HOTKEY_NAMES[i] + ": " + (code == 0 ? "none" : keyName(code)));
+        };
+        b[0] = button("", v -> {
+            AlertDialog d = styled(new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(HOTKEY_NAMES[i])
+                    .setMessage("Press the controller button to use for this (not the D-pad, A or B).")
+                    .setPositiveButton("None", (x, w) -> { Settings.prefs(this).edit().putInt(key, 0).apply(); label.run(); })
+                    .setNegativeButton("Cancel", null)
+                    .show());
+            d.setOnKeyListener((x, code, e) -> {
+                switch (code) {
+                    case KeyEvent.KEYCODE_DPAD_UP: case KeyEvent.KEYCODE_DPAD_DOWN: case KeyEvent.KEYCODE_DPAD_LEFT:
+                    case KeyEvent.KEYCODE_DPAD_RIGHT: case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_BUTTON_A:
+                    case KeyEvent.KEYCODE_BUTTON_B: case KeyEvent.KEYCODE_BACK: case KeyEvent.KEYCODE_ENTER:
+                    case KeyEvent.KEYCODE_HOME: case KeyEvent.KEYCODE_VOLUME_UP: case KeyEvent.KEYCODE_VOLUME_DOWN:
+                    case KeyEvent.KEYCODE_POWER: case KeyEvent.KEYCODE_UNKNOWN:
+                        return false;
+                }
+                if (e.getAction() != KeyEvent.ACTION_UP) return true;
+                android.content.SharedPreferences.Editor ed = Settings.prefs(this).edit();
+                for (String other : GameActivity.HOTKEYS) if (Settings.prefs(this).getInt(other, 0) == code) ed.putInt(other, 0);
+                ed.putInt(key, code).apply();
+                status.setText(HOTKEY_NAMES[i] + ": " + keyName(code) + ". That button now does only this in game.");
+                d.dismiss();
+                for (Runnable r : hotkeyLabels) r.run();
+                return true;
+            });
+        });
+        label.run();
+        hotkeyLabels.add(label);
+        return b[0];
     }
 
     // ------------------------------------------------------------------ Memoria's settings

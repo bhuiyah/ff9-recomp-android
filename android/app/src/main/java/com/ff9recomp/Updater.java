@@ -89,7 +89,7 @@ final class Updater {
         if (code == 403 || code == 429) throw new IOException("GitHub asked to wait a while (rate limit)");
         if (code != 200) throw new IOException("GitHub answered " + code);
         String body;
-        try (InputStream in = c.getInputStream()) { body = new String(in.readAllBytes(), StandardCharsets.UTF_8); }
+        try (InputStream in = c.getInputStream()) { body = new String(Reports.readAll(in), StandardCharsets.UTF_8); }
         String mine = installedVersion(ctx);
         Release best = null;
         try {

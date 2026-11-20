@@ -2029,12 +2029,12 @@ public class LauncherActivity extends Activity {
                         java.util.zip.ZipInputStream z = new java.util.zip.ZipInputStream(in);
                         for (java.util.zip.ZipEntry e; (e = z.getNextEntry()) != null; ) {
                             String p = savePath(e.getName());
-                            if (!e.isDirectory() && p != null) files.put(p, z.readAllBytes());
+                            if (!e.isDirectory() && p != null) files.put(p, Reports.readAll(z));
                         }
                     } else {
                         String p = savePath(name);
                         if (p == null) throw new java.io.IOException(name + " is not one of FF9's save files (SavedData_....dat)");
-                        files.put(p, in.readAllBytes());
+                        files.put(p, Reports.readAll(in));
                     }
                 }
             }

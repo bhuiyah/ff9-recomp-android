@@ -330,6 +330,13 @@ final class Reports {
         z.closeEntry();
     }
 
+    /** InputStream.readAllBytes is Android 13+; this works on Android 11 and 12 too (GitHub #52). */
+    static byte[] readAll(InputStream in) throws IOException {
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        copy(in, b, Long.MAX_VALUE);
+        return b.toByteArray();
+    }
+
     private static void copy(InputStream in, OutputStream o, long max) throws IOException {
         byte[] buf = new byte[1 << 16];
         long total = 0;

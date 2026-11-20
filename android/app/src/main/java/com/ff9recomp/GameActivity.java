@@ -435,11 +435,19 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     /** The game's rumble on the controller's motor when it has one, else the device's. */
     private void vibrate(int strength) {
         android.os.Vibrator v = null;
-        for (int id : InputDevice.getDeviceIds()) {
-            InputDevice d = InputDevice.getDevice(id);
-            if (isGamepad(d) && d.getVibratorManager().getVibratorIds().length > 0) { v = d.getVibratorManager().getDefaultVibrator(); break; }
+        if (android.os.Build.VERSION.SDK_INT >= 31) {   // VibratorManager is Android 12+ (GitHub #52)
+            for (int id : InputDevice.getDeviceIds()) {
+                InputDevice d = InputDevice.getDevice(id);
+                if (isGamepad(d) && d.getVibratorManager().getVibratorIds().length > 0) { v = d.getVibratorManager().getDefaultVibrator(); break; }
+            }
+            if (v == null) v = ((android.os.VibratorManager) getSystemService(VIBRATOR_MANAGER_SERVICE)).getDefaultVibrator();
+        } else {
+            for (int id : InputDevice.getDeviceIds()) {
+                InputDevice d = InputDevice.getDevice(id);
+                if (isGamepad(d) && d.getVibrator().hasVibrator()) { v = d.getVibrator(); break; }
+            }
+            if (v == null) v = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
         }
-        if (v == null) v = ((android.os.VibratorManager) getSystemService(VIBRATOR_MANAGER_SERVICE)).getDefaultVibrator();
         if (v == null || !v.hasVibrator()) return;
         if (strength == 0) { v.cancel(); return; }
         int amp = Math.max(1, Math.min(255, rumble == 2 ? strength : strength * 2 / 3));   // Light: two thirds

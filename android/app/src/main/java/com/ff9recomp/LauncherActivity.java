@@ -489,6 +489,16 @@ public class LauncherActivity extends Activity {
                 }
             }
         }
+        // the controller's hotkeys (GameActivity.send), GitHub #51
+        TextView hk = heading("Hotkeys");
+        hk.setPadding(0, dp(14), 0, dp(4));
+        col.addView(hk);
+        col.addView(note("Hold Select and press:\n"
+                + "  R1: keep a save state of where you are (Save states on the main page load it)\n"
+                + "  R2: High Speed booster on or off (fast-forward; L3 also does it)\n"
+                + "  L1: on two-screen devices, the guide or the party panels on the second screen\n"
+                + "  Start (hold for a second): leave the game\n"
+                + "Keyboard: arrows or WASD move, Enter confirm, Esc cancel, Tab menu, Q/E L1/R1, Backslash Select, P Start."));
         languageSection(col);
         TextView gh = heading("Guide");
         gh.setPadding(0, dp(14), 0, dp(4));

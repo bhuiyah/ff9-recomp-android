@@ -862,7 +862,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         int toGame = (all & (START | BACK)) == (START | BACK) ? all & ~(START | BACK) : all;
         // the on-screen sticks when the real ones are centred
         boolean realStick = rx != 0 || ry != 0, realLeft = lx != 0 || ly != 0;
-        nativePad(toGame, Math.max(lt, touchLt), Math.max(rt, touchRt), realLeft ? lx : touchLx, realLeft ? ly : touchLy,
+        int ltAll = Math.max(Math.max(lt, touchLt), keyLt), rtAll = Math.max(Math.max(rt, touchRt), keyRt);
+        nativePad(toGame, ltAll, rtAll, realLeft ? lx : touchLx, realLeft ? ly : touchLy,
                   realStick ? rx : touchRx, realStick ? ry : touchRy);
         // Select+L1: the guide or the panels on the second screen
         boolean guideCombo = (all & (BACK | LB)) == (BACK | LB);
@@ -872,6 +873,11 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         boolean keepCombo = (all & (BACK | RB)) == (BACK | RB);
         if (keepCombo && !keepHeld) keepState();
         keepHeld = keepCombo;
+        // Select+R2: the High Speed booster on or off (L3 does it too, but not every device has
+        // sticks to click, GitHub #51)
+        boolean speedCombo = (all & BACK) != 0 && rtAll > 128;
+        if (speedCombo && !speedHeld) commandFromPanel(1);
+        speedHeld = speedCombo;
         // Select+Start held for a second: the leave-the-game dialog
         boolean combo = (all & (START | BACK)) == (START | BACK);
         if (combo != quitHeld) {
@@ -922,7 +928,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         }
     }
 
-    private boolean keepHeld, guideHeld;
+    private boolean keepHeld, guideHeld, speedHeld;
+    private int keyLt, keyRt;
     private android.webkit.WebView guide;
     private String guidePending;
 
@@ -958,7 +965,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         quitHeld = false;
         if (isFinishing() || (quitDialog != null && quitDialog.isShowing())) return;
         buttons = dpad = testButtons = 0;
-        lt = rt = 0;
+        lt = rt = keyLt = keyRt = 0;
         nativePad(0, 0, 0, lx, ly, rx, ry);
         quitDialog = new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Leave the game?")
@@ -1026,9 +1033,15 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
             send();
             return true;
         }
+        // L2/R2 as keys (handhelds whose triggers are plain buttons, GitHub #51): full pull
+        if (e.getKeyCode() == KeyEvent.KEYCODE_BUTTON_L2 || e.getKeyCode() == KeyEvent.KEYCODE_BUTTON_R2) {
+            int v = e.getAction() == KeyEvent.ACTION_UP ? 0 : 255;
+            if (e.getKeyCode() == KeyEvent.KEYCODE_BUTTON_L2) keyLt = v; else keyRt = v;
+            send();
+            return true;
+        }
         int b = bit(e.getKeyCode());
         if (b == 0) return super.dispatchKeyEvent(e);
-        if (e.getKeyCode() == KeyEvent.KEYCODE_BUTTON_L2 || e.getKeyCode() == KeyEvent.KEYCODE_BUTTON_R2) return true;
         if (e.getAction() == KeyEvent.ACTION_DOWN) buttons |= b; else if (e.getAction() == KeyEvent.ACTION_UP) buttons &= ~b;
         send();
         return true;

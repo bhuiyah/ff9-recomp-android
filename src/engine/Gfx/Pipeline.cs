@@ -676,6 +676,17 @@ public static class Pipeline {
         var r = cam.ViewportRect;
         return r.y > 0.001f && r.height < 0.999f && r.height >= 0.5f && r.x <= 0.01f && r.width >= 0.99f;
     }
+    // The UI (menus, dialogs, the pause dim, fades) has its own canvas, 1600x1100, which the game
+    // fits to the screen's width on screens squarer than that, centred, while its camera covers the
+    // whole screen: so with the picture stretched the menus kept bars above and below (GitHub issue
+    // 50, 0.1.41; measured 852 of 1080 pixels at 1240x1080). That band is stretched to the full height.
+    static Matrix4x4 StretchUi(Matrix4x4 p, int w, int h) {
+        float band = w * 1100f / 1600f / h;                 // the canvas's share of the height
+        if (band >= 0.999f || band < 0.5f) return p;
+        var s = M.Identity;
+        s.m11 = 1 / band;                                   // centred: only a scale in clip space
+        return M.Mul(s, p);
+    }
     static readonly bool traceRects = Environment.GetEnvironmentVariable("FF9_TRACE_CAMRECT") == "1";
     static readonly HashSet<string> tracedRects = new();
 
@@ -690,7 +701,7 @@ public static class Pipeline {
         else if ((target == null || target.Width == Device.Width && target.Height == Device.Height) && StretchShort(cam))
             pr = new Rect(pr.x, 0, pr.width, cam.TargetH);   // the world map draws into a screen-sized texture first
         if (traceRects && tracedRects.Add($"{cam.GameObject.Name} {cam.ViewportRect} {target?.Width}"))
-            Log.Info($"camrect: {cam.GameObject.Name} rect {cam.ViewportRect} drawn {pr} of {cam.TargetW}x{cam.TargetH}{(target != null ? " (texture)" : "")}");
+            Log.Info($"camrect: {cam.GameObject.Name} rect {cam.ViewportRect} drawn {pr} of {cam.TargetW}x{cam.TargetH}{(target != null ? " (texture)" : "")}{(cam.Orthographic ? $" ortho {cam.OrthoSize}" : "")} depth {cam.Depth}");
         GL.glViewport((int)pr.x, (int)pr.y, (int)pr.width, (int)pr.height);
         GL.glEnable(GL.SCISSOR_TEST);
         GL.glScissor((int)pr.x, (int)pr.y, (int)pr.width, (int)pr.height);
@@ -710,6 +721,7 @@ public static class Pipeline {
         GL.glDisable(GL.SCISSOR_TEST);
         View = cam.View;
         Proj = cam.Projection;
+        if (stretchShort && target == null && cam.GameObject.Name == "UI Camera") Proj = StretchUi(Proj, cam.TargetW, cam.TargetH);
         Model = M.Identity;
         CameraPos = cam.GameObject.Transform.Position;
         SendToCamera(cam, "OnPreRender");

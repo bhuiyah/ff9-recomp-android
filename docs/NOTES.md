@@ -814,3 +814,19 @@ The swirl stayed black. Three things, all needed:
   game a 1240x1080 buffer (shown stretched on the 16:9 screen); FF9_TRACE_CAMRECT=1 logs each
   camera's rect and the area it was drawn to. Field (1:1), world map (1:2) and battle 336 filled;
   the Mognet dialog and battle menus sit where they should.
+
+## Menus and fades fill squarer screens too; Select+R2 high speed (0.1.41, GitHub #50, #51)
+
+- With 0.1.40's Stretch everything at 1240x1080 the field filled, but the UI (main menu, the pause
+  dim, the fade between fields) kept bars: the UI Camera covers the whole screen (rect 0,0,1,1,
+  ortho 1), and the game fits its 1600x1100 UI canvas to the width on screens squarer than that,
+  centred (852 of 1080 pixels at 1240x1080, measured in the reporter's and the Thor's shots).
+  Pipeline.StretchUi scales the UI Camera's projection vertically by 1080/852 with FF9_STRETCH 2
+  (only when the canvas is shorter than the screen, so 16:9 screens are unchanged).
+  FF9_TRACE_CAMRECT now also logs ortho size and depth.
+- Tested on the Thor with FF9_TEST_SURFACE=1240x1080: the menu, the pause dim and a field-exit
+  fade cover the whole height; field 1:1 and battle 336 still fill.
+- Select+R2 toggles the High Speed booster (GameActivity.send, companion command 1) for devices
+  without L3 (Retroid Pocket Classic). L2/R2 that come as key events (digital triggers) now reach
+  the game as a full pull. Settings shows a Hotkeys list. Tested: `input keycombination
+  KEYCODE_BUTTON_SELECT KEYCODE_BUTTON_R2` logs "panel: booster HighSpeedMode on", then off.

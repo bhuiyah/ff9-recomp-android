@@ -801,3 +801,16 @@ The swirl stayed black. Three things, all needed:
   so the panels stayed black and ignored touch for as long as that party lasted (it looked
   tied to imported saves). Now any member counts. Both reporters' saves on the Thor: black on
   0.1.38, panels on 0.1.39.
+
+## Stretch everything on screens squarer than 4:3 (0.1.40, GitHub #50)
+
+- The Retroid Pocket Classic (and the Thor's bottom screen) is 1240x1080. Without widescreen the
+  field, world map and battle cameras get a full-width rect with y 0.10, height 0.80 (106 pixels of
+  black above and below); the stretch only handled narrow (pillarboxed) rects, so no setting
+  changed anything. Pipeline.StretchShort: with FF9_STRETCH 2, a full-width rect at least half the
+  height is drawn over the whole height, also into a texture the size of the screen (WorldCamera
+  and Battle Camera draw into one first). Option 1 stays sideways-only.
+- Testing on the Thor: FF9_TEST_SURFACE=1240x1080 in files/env.txt makes GameActivity give the
+  game a 1240x1080 buffer (shown stretched on the 16:9 screen); FF9_TRACE_CAMRECT=1 logs each
+  camera's rect and the area it was drawn to. Field (1:1), world map (1:2) and battle 336 filled;
+  the Mognet dialog and battle menus sit where they should.

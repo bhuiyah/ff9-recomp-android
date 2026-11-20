@@ -414,7 +414,7 @@ public class LauncherActivity extends Activity {
             case "touch_controls": return new String[] { "Only when no controller is connected", "Always on screen", "Never" }[i];
             case "stretch": return new String[] { "Black bars where the picture is narrower than the screen",
                     "Areas drawn 4:3 are stretched sideways to the screen's width",
-                    "Also the 16:9 picture on wider screens (most phones), as FF7Recomp's stretch" }[i];
+                    "Also the 16:9 picture on wider screens (most phones), and the bars above and below on squarer ones" }[i];
             default: return null;
         }
     }

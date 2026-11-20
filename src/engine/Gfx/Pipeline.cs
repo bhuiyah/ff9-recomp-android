@@ -666,6 +666,18 @@ public static class Pipeline {
         var r = cam.ViewportRect;
         return r.x > 0.001f && r.width < 0.999f && r.width >= 0.5f && r.y <= 0.01f && r.height >= 0.99f;
     }
+    // Stretch everything (FF9_STRETCH 2) on a screen taller than 4:3 (GitHub issue 50: the Retroid
+    // Pocket Classic's 1240x1080): the 4:3 picture is then a full-width camera with black above and
+    // below, so it is stretched up and down to the screen's height the same way (also when the camera
+    // draws into a texture the size of the screen, as the world map's does).
+    static readonly bool stretchShort = Environment.GetEnvironmentVariable("FF9_STRETCH") is "2";
+    static bool StretchShort(NCamera cam) {
+        if (!stretchShort) return false;
+        var r = cam.ViewportRect;
+        return r.y > 0.001f && r.height < 0.999f && r.height >= 0.5f && r.x <= 0.01f && r.width >= 0.99f;
+    }
+    static readonly bool traceRects = Environment.GetEnvironmentVariable("FF9_TRACE_CAMRECT") == "1";
+    static readonly HashSet<string> tracedRects = new();
 
     static void RenderCameraOnce(NCamera cam, UnityEngine.Shader? replacement, string? replacementTag) {
         Camera = cam;
@@ -675,6 +687,10 @@ public static class Pipeline {
         RenderTargets.Set(target);
         var pr = cam.PixelRect;
         if (target == null && StretchNarrow(cam)) pr = new Rect(0, pr.y, cam.TargetW, pr.height);
+        else if ((target == null || target.Width == Device.Width && target.Height == Device.Height) && StretchShort(cam))
+            pr = new Rect(pr.x, 0, pr.width, cam.TargetH);   // the world map draws into a screen-sized texture first
+        if (traceRects && tracedRects.Add($"{cam.GameObject.Name} {cam.ViewportRect} {target?.Width}"))
+            Log.Info($"camrect: {cam.GameObject.Name} rect {cam.ViewportRect} drawn {pr} of {cam.TargetW}x{cam.TargetH}{(target != null ? " (texture)" : "")}");
         GL.glViewport((int)pr.x, (int)pr.y, (int)pr.width, (int)pr.height);
         GL.glEnable(GL.SCISSOR_TEST);
         GL.glScissor((int)pr.x, (int)pr.y, (int)pr.width, (int)pr.height);

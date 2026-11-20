@@ -55,9 +55,13 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         int res = prefs.getInt("resolution", 0);
         int stretch = prefs.getInt("stretch", 0);
         float f = res == 1 ? 0.75f : res == 2 ? 0.5f : res == 3 ? 0.25f : 1f;
+        // adb tests: FF9_TEST_SURFACE=1240x1080 in files/env.txt draws the game at another screen's
+        // size, shown stretched to this one (GitHub issue 50: the Retroid Pocket Classic's screen)
+        int[] testSurface = testSurface();
         v.addOnLayoutChangeListener((x, l, t, r, bt, ol, ot, or, ob) -> {
             int w = r - l, h = bt - t;
             if (w <= 0 || h <= 0) return;
+            if (testSurface != null) { v.getHolder().setFixedSize(testSurface[0], testSurface[1]); return; }
             int bw = stretch == 2 && w * 9 > h * 16 + 9 ? Math.round(h * 16f / 9f) : w;
             if (f == 1f && bw == w) v.getHolder().setSizeFromLayout();
             else v.getHolder().setFixedSize(Math.max(2, Math.round(bw * f) & ~1), Math.max(2, Math.round(h * f) & ~1));
@@ -785,6 +789,18 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
             runOnUiThread(this::finish);
             android.os.Process.killProcess(android.os.Process.myPid());
         }, "FF9").start();
+    }
+
+    private int[] testSurface() {
+        try {
+            File env = new File(new GameInstall(this).files, "env.txt");
+            if (!env.isFile()) return null;
+            for (String l : new String(java.nio.file.Files.readAllBytes(env.toPath()), java.nio.charset.StandardCharsets.UTF_8).split("\n")) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("FF9_TEST_SURFACE=(\\d+)x(\\d+)").matcher(l.trim());
+                if (m.matches()) return new int[] { Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)) };
+            }
+        } catch (Exception e) { Log.w(TAG, "env.txt", e); }
+        return null;
     }
 
     @Override public void surfaceChanged(SurfaceHolder h, int f, int w, int hh) { nativeSetSurface(h.getSurface()); }

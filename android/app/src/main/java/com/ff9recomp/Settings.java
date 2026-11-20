@@ -36,8 +36,8 @@ final class Settings {
         new Option("resolution", "Resolution", "Lower draws fewer pixels: cooler and longer battery, softer picture. The screen scales it up for free.", 0,
                 "Full", "75%", "50%", "25%"),
         new Option("widescreen", "Widescreen", "Fields and battles fill a 16:9 screen.", 1),
-        // GitHub issues 4 and 32: no black bars, by stretching (engine Gfx/Pipeline.cs, GameActivity)
-        new Option("stretch", "Picture", "Black bars or a stretched picture: some areas are drawn 4:3, and phones are wider than 16:9.", 0,
+        // GitHub issues 4, 32 and 50: no black bars, by stretching (engine Gfx/Pipeline.cs, GameActivity)
+        new Option("stretch", "Picture", "Black bars or a stretched picture: some areas are drawn 4:3, phones are wider than 16:9, and some handhelds are squarer than 4:3.", 0,
                 "Keep its shape", "Stretch narrow areas", "Stretch everything to the screen"),
         // GitHub issues 2 and 8: the phone held upright (GameActivity.arrange)
         new Option("portrait", "Portrait (phones)", "Hold the phone upright: the game on top, the party panels and touch controls under it.", 0),

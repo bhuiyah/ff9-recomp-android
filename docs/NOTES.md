@@ -767,3 +767,15 @@ The swirl stayed black. Three things, all needed:
   Player.Frame now runs RunStarts again after Update, before the invokes.
 - Tested on the Thor: Ability > Equip (Zidane, 3 columns of 9 rows), Item > Key, Item > Use,
   battles 336 and 73 (command menu, item list), field and world map.
+
+## On-screen left stick (0.1.37, GitHub #44)
+
+- Settings > On-screen controls > Size and layout: "Left stick instead of the D-pad" (pref
+  `touch_left_stick`, off by default; TestControl SET `--ez touch_left_stick true`). TouchControls
+  draws a knob in the D-pad's ring; the finger that lands on it holds it until it lifts, and the
+  knob goes out as LX/LY (Listener.pad now carries lx/ly), used by GameActivity while the real left
+  stick is centred. Same group as the D-pad in the layout editor.
+- Tested on the Thor (touch_controls 1, world map save 1:2): a full push left runs and the knob
+  re-centres on release (he stops), a light push moves the knob part way, and in the menu two
+  short pushes down moved the cursor (with the menu's own hold repeat, Item to Card). With the
+  option off the D-pad still draws and lights the pressed arrow.

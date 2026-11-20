@@ -32,8 +32,9 @@ public class TouchLayoutActivity extends Activity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF10141C);
 
-        controls = new TouchControls(this, (b, lt, rt, rx, ry) -> { });
+        controls = new TouchControls(this, (b, lt, rt, lx, ly, rx, ry) -> { });
         controls.setExtra(prefs.getBoolean("touch_extra", false));
+        controls.setLeftStick(prefs.getBoolean("touch_left_stick", false));
         controls.setLayout(prefs.getString("touch_layout", ""));
         controls.setEditing(true, this::save);
         root.addView(controls, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -64,6 +65,17 @@ public class TouchLayoutActivity extends Activity {
             save();
         });
         panel.addView(extra);
+        // GitHub #44: an analog left stick in the D-pad's place (a light push walks, a full one runs)
+        android.widget.CheckBox left = new android.widget.CheckBox(this);
+        left.setText("Left stick instead of the D-pad");
+        left.setTextColor(0xFFFFFFFF);
+        left.setTextSize(15);
+        left.setChecked(controls.leftStick());
+        left.setOnCheckedChangeListener((cb, on) -> {
+            controls.setLeftStick(on);
+            prefs.edit().putBoolean("touch_left_stick", on).apply();
+        });
+        panel.addView(left);
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER);
         Button reset = new Button(this);

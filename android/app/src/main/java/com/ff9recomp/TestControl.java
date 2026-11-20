@@ -45,6 +45,7 @@ public class TestControl extends BroadcastReceiver {
         TYPES.put("guide_url", String.class);
         // On-screen controls > Size and layout: right stick, L3 and R3
         TYPES.put("touch_extra", Boolean.class);
+        TYPES.put("touch_left_stick", Boolean.class);
         // Game files > Storage's own folder ("" = the app's own folder), switched without moving anything (tests)
         TYPES.put("storage_custom", String.class);
     }

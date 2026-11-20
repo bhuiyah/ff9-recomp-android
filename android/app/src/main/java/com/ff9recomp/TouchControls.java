@@ -33,9 +33,13 @@ import android.view.View;
  * (High speed, No battles, Battle assist, 9999 damage), the ones the AYN Thor's bottom screen has
  * on its Extras page; a tap turns one on or off (GameActivity.commandFromPanel, engine
  * Core/Companion.cs), and BOOST again closes the row. Not sent to the game as a button.
+ *
+ * Optional (Settings > On-screen controls > Size and layout, "Left stick instead of the D-pad",
+ * GitHub #44): the D-pad's ring becomes an analog left stick (LX/LY), so a light push walks and a
+ * full one runs.
  */
 final class TouchControls extends View {
-    interface Listener { void pad(int buttons, int lt, int rt, int rx, int ry); }
+    interface Listener { void pad(int buttons, int lt, int rt, int lx, int ly, int rx, int ry); }
 
     private static final int UP = 0x0001, DOWN = 0x0002, LEFT = 0x0004, RIGHT = 0x0008;
     private static final int START = 0x0010, SELECT = 0x0020, L1 = 0x0100, R1 = 0x0200;
@@ -77,6 +81,10 @@ final class TouchControls extends View {
     private float stickX, stickY, stickR;
     private int stickPointer = -1;
     private float knobX, knobY;
+    // the left stick (in the D-pad's place when leftStick is on)
+    private boolean leftStick;
+    private int padPointer = -1;
+    private float lKnobX, lKnobY;
 
     private final Listener listener;
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG), fill = new Paint(Paint.ANTI_ALIAS_FLAG),
@@ -102,11 +110,24 @@ final class TouchControls extends View {
     }
     boolean extra() { return extra; }
 
+    /** The D-pad's ring as an analog left stick. */
+    void setLeftStick(boolean on) {
+        leftStick = on;
+        releaseLeft();
+        invalidate();
+    }
+    boolean leftStick() { return leftStick; }
+
     private int groups() { return extra ? GROUPS : 4; }
 
     private void release() {
         stickPointer = -1;
         knobX = knobY = 0;
+    }
+
+    private void releaseLeft() {
+        padPointer = -1;
+        lKnobX = lKnobY = 0;
     }
 
     /** "scale;opacity;padX,padY;faceX,faceY;leftX,leftY;rightX,rightY[;stickX,stickY]" (Settings > On-screen controls). */
@@ -256,10 +277,19 @@ final class TouchControls extends View {
         fill.setColor(0x26FFFFFF);
         c.drawCircle(padX, padY, padR, fill);
         c.drawCircle(padX, padY, padR, line);
-        drawArrow(c, 0, -1, UP);
-        drawArrow(c, 0, 1, DOWN);
-        drawArrow(c, -1, 0, LEFT);
-        drawArrow(c, 1, 0, RIGHT);
+        if (leftStick) {
+            // the left stick: a knob that follows the finger
+            float kr = padR * 0.45f, kx = padX + lKnobX * (padR - kr), ky = padY + lKnobY * (padR - kr);
+            fill.setColor(padPointer >= 0 ? 0x90FFFFFF : 0x50FFFFFF);
+            c.drawCircle(kx, ky, kr, fill);
+            c.drawCircle(kx, ky, kr, line);
+            c.drawText("L", kx, ky - (text.descent() + text.ascent()) / 2, text);
+        } else {
+            drawArrow(c, 0, -1, UP);
+            drawArrow(c, 0, 1, DOWN);
+            drawArrow(c, -1, 0, LEFT);
+            drawArrow(c, 1, 0, RIGHT);
+        }
         if (extra) {
             // right stick: a ring and a knob that follows the finger
             fill.setColor(0x26FFFFFF);
@@ -362,15 +392,30 @@ final class TouchControls extends View {
         int lifted = -1;
         int act = e.getActionMasked();
         if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_POINTER_UP) lifted = e.getActionIndex();
-        float oldKx = knobX, oldKy = knobY;
-        boolean oldHeld = stickPointer >= 0;
+        float oldKx = knobX, oldKy = knobY, oldLx = lKnobX, oldLy = lKnobY;
+        boolean oldHeld = stickPointer >= 0, oldLHeld = padPointer >= 0;
         // the right stick: a finger that lands on it holds it until it lifts, wherever it slides
         if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN) {
             int i = e.getActionIndex();
             boostTap(e.getX(i), e.getY(i));
         }
-        if (act == MotionEvent.ACTION_CANCEL) release();
-        else if (extra) {
+        if (act == MotionEvent.ACTION_CANCEL) { release(); releaseLeft(); }
+        else if (leftStick) {
+            // the left stick, as the right one: the finger that lands on the ring holds it
+            if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN) {
+                int i = e.getActionIndex();
+                if (padPointer < 0 && onPad(e.getX(i), e.getY(i))) padPointer = e.getPointerId(i);
+            }
+            if (lifted >= 0 && e.getPointerId(lifted) == padPointer) releaseLeft();
+            int pi = padPointer >= 0 ? e.findPointerIndex(padPointer) : -1;
+            if (pi >= 0) {
+                float dx = (e.getX(pi) - padX) / (padR * 0.8f), dy = (e.getY(pi) - padY) / (padR * 0.8f);
+                float d = (float) Math.hypot(dx, dy);
+                if (d > 1f) { dx /= d; dy /= d; }
+                lKnobX = dx; lKnobY = dy;
+            } else if (padPointer >= 0) releaseLeft();
+        }
+        if (act != MotionEvent.ACTION_CANCEL && extra) {
             if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN) {
                 int i = e.getActionIndex();
                 if (stickPointer < 0 && onStick(e.getX(i), e.getY(i))) stickPointer = e.getPointerId(i);
@@ -386,17 +431,20 @@ final class TouchControls extends View {
         }
         if (act != MotionEvent.ACTION_CANCEL) {
             for (int i = 0; i < e.getPointerCount(); i++) {
-                if (i == lifted || (stickPointer >= 0 && e.getPointerId(i) == stickPointer)) continue;
+                if (i == lifted || (stickPointer >= 0 && e.getPointerId(i) == stickPointer)
+                        || (padPointer >= 0 && e.getPointerId(i) == padPointer)) continue;
                 if (inBoosters(e.getX(i), e.getY(i))) continue;
                 s |= hit(e.getX(i), e.getY(i));
             }
         }
-        boolean stickMoved = knobX != oldKx || knobY != oldKy;
+        boolean stickMoved = knobX != oldKx || knobY != oldKy || lKnobX != oldLx || lKnobY != oldLy;
         if (s != state || stickMoved) {
-            if ((s & ~state & ~BOOST) != 0 || (stickPointer >= 0 && !oldHeld)) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            if ((s & ~state & ~BOOST) != 0 || (stickPointer >= 0 && !oldHeld) || (padPointer >= 0 && !oldLHeld))
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
             state = s;
             // XInput: Y points up, the screen's down
             listener.pad(s & 0xFFFF, (s & L2) != 0 ? 255 : 0, (s & R2) != 0 ? 255 : 0,
+                         Math.round(lKnobX * 32767f), Math.round(-lKnobY * 32767f),
                          Math.round(knobX * 32767f), Math.round(-knobY * 32767f));
             invalidate();
         }
@@ -441,9 +489,14 @@ final class TouchControls extends View {
         return extra && Math.hypot(px - stickX, py - stickY) < stickR * 1.2f;
     }
 
+    /** Whether a finger at (px, py) takes the left stick. */
+    private boolean onPad(float px, float py) {
+        return leftStick && Math.hypot(px - padX, py - padY) < padR * 1.35f;
+    }
+
     /** What a finger at (px, py) presses. */
     private int hit(float px, float py) {
-        if (onStick(px, py)) return 0;
+        if (onStick(px, py) || onPad(px, py)) return 0;
         float dx = px - padX, dy = py - padY;
         float d = (float) Math.hypot(dx, dy);
         if (d < padR * 1.35f) {

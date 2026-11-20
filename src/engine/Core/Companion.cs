@@ -415,6 +415,8 @@ public static class Companion {
         } catch (Exception e) { Log.Once("companioncounters", "companion counters: " + e.Message); b.Append('}'); }
     }
 
+    static bool AnyMember(Array a) { foreach (var x in a) if (x != null) return true; return false; }
+
     static string Build(bool slow) {
         var b = new StringBuilder(1024);
         b.Append('{');
@@ -428,7 +430,9 @@ public static class Companion {
         string scene = Player.LastSceneLoaded;
         bool inPlay = scene is "FieldMap" or "WorldMap" or "BattleMap";
         bool opening = (mode == 1 || mode == 5) && L(Get(ff9, "fldMapNo")) == 70;
-        bool ready = inPlay && !opening && party != null && Get(party, "member") is Array mem && mem.Length > 0 && mem.GetValue(0) != null;
+        // any member: the first slot can be empty (a party arranged that way, saves from other
+        // versions: GitHub #46, #49), and the panels then stayed blank
+        bool ready = inPlay && !opening && party != null && Get(party, "member") is Array mem && AnyMember(mem);
         string m = mode == 2 ? "battle" : mode == 3 ? "world" : mode == 1 || mode == 5 ? "field" : "other";
         b.Append("\"ready\":").Append(ready ? 1 : 0).Append(",\"mode\":"); Str(b, m);
         if (ff9 != null) {

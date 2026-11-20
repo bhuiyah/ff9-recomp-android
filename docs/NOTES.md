@@ -793,3 +793,11 @@ The swirl stayed black. Three things, all needed:
 - #44: Settings > On-screen controls > Size and layout: "Vibrate when a button is pressed" (pref
   `touch_vibrate`, on by default; TestControl SET `--ez touch_vibrate false`) turns off the
   touch controls' haptic feedback (setHapticFeedbackEnabled).
+
+## Second-screen panels blank with some saves (0.1.39, GitHub #49, #46)
+
+- Companion.Build's `ready` needed party.member[0]: a party whose first slot is empty (Zidane
+  alone in Lindblum in slot 2; Dagger and Zidane at Dali with Vivi's slot empty) kept "ready" 0,
+  so the panels stayed black and ignored touch for as long as that party lasted (it looked
+  tied to imported saves). Now any member counts. Both reporters' saves on the Thor: black on
+  0.1.38, panels on 0.1.39.

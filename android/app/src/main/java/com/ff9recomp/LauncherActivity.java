@@ -398,7 +398,7 @@ public class LauncherActivity extends Activity {
 
     private static final String[][] GROUPS = {
         { "Frame rate", "fps" },
-        { "Display", "resolution", "stretch", "widescreen", "portrait", "skip_intros", "crt_filter", "show_fps" },
+        { "Display", "resolution", "stretch", "widescreen", "portrait", "side", "side_left", "skip_intros", "crt_filter", "show_fps" },
         { "Game", "start", "boosters", "speed", "turbo_dialog" },
         { "Controls", "swap_confirm", "analog_run", "touch_controls", "rumble" },
         { "Screens", "bottom_screen", "bottom_buttons", "panel_dim", "swap_screens" },

@@ -97,7 +97,7 @@ public class CompanionView extends View {
         final RectF box = new RectF(); final int kind, arg;
         Hit(RectF r, int kind, int arg) { box.set(r); this.kind = kind; this.arg = arg; }
     }
-    private static final int H_CMD = 0, H_TAB = 1, H_HIDE = 2, H_BOOK = 3;
+    private static final int H_CMD = 0, H_TAB = 1, H_HIDE = 2, H_BOOK = 3, H_PANELS = 4;
     private final List<Hit> hits = new ArrayList<>();
     private Hit pressed;
 
@@ -106,6 +106,15 @@ public class CompanionView extends View {
     private boolean deck;
     private int tab;
     private boolean partyHidden;
+    /** Side by side (GameActivity.arrangeSide): the header's button that hides the panels (null:
+     *  none), at the header's left or right end, the edge next to the game. */
+    private Runnable onHide;
+    private boolean hideAtLeft;
+    void setOnHide(Runnable r, boolean atLeft) { onHide = r; hideAtLeft = atLeft; invalidate(); }
+
+    /** A tall, narrow area (Side by side: the panels beside the game on one screen). The panels then
+     *  stack: a two-row header, tabs and deck in two rows, the party above the details. */
+    private boolean narrow() { return getWidth() < getHeight() * 0.8f; }
     private String flash;
     private long flashUntil;
 
@@ -196,18 +205,29 @@ public class CompanionView extends View {
         c.drawColor(BG);
         hits.clear();
         if (state.optInt("ready") != 1) return;     // blank until a game is under way
-        float u = Math.min(w, h) / 1080f, pad = 14 * u, gap = 12 * u;
+        final boolean nar = narrow();
+        float u = nar ? Math.min(h / 1500f, w / 620f) : Math.min(w, h) / 1080f, pad = 14 * u, gap = 12 * u;
         String mode = state.optString("mode");
         boolean battle = "battle".equals(mode), world = "world".equals(mode);
 
-        // header: where, play time, gil, the guide book
-        RectF head = new RectF(pad, pad, w - pad, pad + 96 * u);
+        // header: where, play time, gil, the guide book (narrow: where and the book, then time and gil)
+        RectF head = new RectF(pad, pad, w - pad, pad + (nar ? 150 : 96) * u);
         window(c, head, u);
         String loc = clean(state.optString("loc"));
         String where = battle ? "Battle" : loc.isEmpty() ? (world ? "World map" : " ") : loc;
-        float right = head.right - 24 * u;
+        float rowB = nar ? head.top + 84 * u : head.bottom;     // the first row's bottom
+        float hl = head.left, hr = head.right;                   // the first row's room
+        if (onHide != null) {          // Side by side: hide the panels, at the edge next to the game
+            float hs = Math.min(rowB - head.top - 24 * u, 60 * u);
+            float hx = hideAtLeft ? head.left + 14 * u : head.right - 14 * u - hs;
+            RectF hb = new RectF(hx, head.top + (rowB - head.top - hs) / 2, hx + hs, head.top + (rowB - head.top + hs) / 2);
+            drawHideButton(c, hb, pressed != null && pressed.kind == H_PANELS, u);
+            hits.add(new Hit(new RectF(hb.left - 10 * u, head.top, hb.right + 10 * u, rowB), H_PANELS, 0));
+            if (hideAtLeft) hl = hb.right; else hr = hb.left - 6 * u;
+        }
+        float right = hr - 24 * u;
         {   // the book: Pixel Guide on this screen (or the player's own guide page, when set)
-            RectF book = new RectF(right - 64 * u, head.top + 20 * u, right, head.bottom - 20 * u);
+            RectF book = new RectF(right - 64 * u, head.top + 20 * u, right, rowB - 20 * u);
             boolean hot = pressed != null && pressed.kind == H_BOOK;
             if (hot) {
                 fill.setShader(null);
@@ -227,30 +247,48 @@ public class CompanionView extends View {
                 c.drawLine(bx - br * 0.45f, by, bx, by + br * 0.45f, line);
                 c.drawLine(bx + br * 0.45f, by, bx, by + br * 0.45f, line);
             }
-            hits.add(new Hit(new RectF(book.left - 12 * u, head.top, book.right + 16 * u, head.bottom), H_BOOK, 0));
+            hits.add(new Hit(new RectF(book.left - 12 * u, head.top, book.right + 16 * u, rowB), H_BOOK, 0));
             right = book.left - 34 * u;
         }
         String gs = GuideInstaller.status;
         if (gs != null && System.currentTimeMillis() < GuideInstaller.statusUntil) { flash = gs; flashUntil = SystemClock.uptimeMillis() + 500; }
         String gil = String.format(Locale.US, "%,d G", state.optLong("gil"));
-        text.setTypeface(sans);
-        text.setTextSize(32 * u);
-        float gilW = Math.max(text.measureText(gil), 120 * u);
-        label(c, "Gil", right - gilW, head.top + 36 * u, 22 * u, LABEL, Paint.Align.LEFT);
-        label(c, gil, right - gilW, head.top + 76 * u, 32 * u, GOLD, Paint.Align.LEFT);
         long t = state.optLong("time");
         String time = String.format(Locale.US, "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60);
-        float tx = right - gilW - 40 * u - Math.max(text.measureText(time), 130 * u);
-        label(c, "Time", tx, head.top + 36 * u, 22 * u, LABEL, Paint.Align.LEFT);
-        label(c, time, tx, head.top + 76 * u, 32 * u, TEXT, Paint.Align.LEFT);
-        text.setTypeface(sansBold);
-        label(c, ellipsize(where, tx - head.left - 60 * u, 38 * u), head.left + 22 * u, head.centerY() + 13 * u, 38 * u, TEXT, Paint.Align.LEFT);
+        if (nar) {
+            text.setTypeface(sansBold);
+            label(c, ellipsize(where, right - hl - 60 * u, 38 * u), hl + 22 * u, head.top + 56 * u, 38 * u, TEXT, Paint.Align.LEFT);
+            text.setTypeface(sans);
+            float y = head.bottom - 24 * u;
+            label(c, "Time", head.left + 22 * u, y, 22 * u, LABEL, Paint.Align.LEFT);
+            text.setTextSize(22 * u);
+            label(c, time, head.left + 22 * u + text.measureText("Time ") + 6 * u, y, 32 * u, TEXT, Paint.Align.LEFT);
+            label(c, gil, head.right - 22 * u, y, 32 * u, GOLD, Paint.Align.RIGHT);
+            text.setTextSize(32 * u);
+            label(c, "Gil", head.right - 22 * u - text.measureText(gil) - 12 * u, y, 22 * u, LABEL, Paint.Align.RIGHT);
+        } else {
+            text.setTypeface(sans);
+            text.setTextSize(32 * u);
+            float gilW = Math.max(text.measureText(gil), 120 * u);
+            label(c, "Gil", right - gilW, head.top + 36 * u, 22 * u, LABEL, Paint.Align.LEFT);
+            label(c, gil, right - gilW, head.top + 76 * u, 32 * u, GOLD, Paint.Align.LEFT);
+            float tx = right - gilW - 40 * u - Math.max(text.measureText(time), 130 * u);
+            label(c, "Time", tx, head.top + 36 * u, 22 * u, LABEL, Paint.Align.LEFT);
+            label(c, time, tx, head.top + 76 * u, 32 * u, TEXT, Paint.Align.LEFT);
+            text.setTypeface(sansBold);
+            label(c, ellipsize(where, tx - hl - 60 * u, 38 * u), hl + 22 * u, head.centerY() + 13 * u, 38 * u, TEXT, Paint.Align.LEFT);
+        }
 
         // tabs
-        float tabTop = head.bottom + gap, tabH = 64 * u, hideW = 70 * u;
-        float tw = (w - 2 * pad - hideW - 6 * 8 * u) / 6f;
+        // narrow: two rows of three, the party's « at the second row's end
+        int tabRows = nar ? 2 : 1, perRow = 6 / tabRows;
+        float rowH = 64 * u, tabTop = head.bottom + gap, tabH = tabRows * rowH + (tabRows - 1) * 8 * u, hideW = 70 * u;
+        float tw = (w - 2 * pad - hideW - perRow * 8 * u) / perRow;
+        float twFirst = nar ? (w - 2 * pad - (perRow - 1) * 8 * u) / perRow : tw;   // narrow: the first row has no «
         for (int i = 0; i < 6; i++) {
-            RectF r = new RectF(pad + i * (tw + 8 * u), tabTop, pad + i * (tw + 8 * u) + tw, tabTop + tabH);
+            int row = i / perRow, col = i % perRow;
+            float cw = row == 0 ? twFirst : tw, ry = tabTop + row * (rowH + 8 * u);
+            RectF r = new RectF(pad + col * (cw + 8 * u), ry, pad + col * (cw + 8 * u) + cw, ry + rowH);
             boolean sel = i == tab;
             boolean hot = pressed != null && pressed.kind == H_TAB && pressed.arg == i;
             tabShape(c, r, sel, hot, u);
@@ -258,17 +296,19 @@ public class CompanionView extends View {
             label(c, TAB_NAMES[i], r.centerX(), r.centerY() + 10 * u, fit(TAB_NAMES[i], r.width() - 14 * u, 27 * u), sel ? GOLD_INK : TAB_TEXT, Paint.Align.CENTER);
             hits.add(new Hit(r, H_TAB, i));
         }
-        RectF hide = new RectF(w - pad - hideW, tabTop, w - pad, tabTop + tabH);
+        RectF hide = new RectF(w - pad - hideW, tabTop + tabH - rowH, w - pad, tabTop + tabH);
         tabShape(c, hide, false, pressed != null && pressed.kind == H_HIDE, u);
-        label(c, partyHidden ? "»" : "«", hide.centerX(), hide.centerY() + 12 * u, 36 * u, TAB_TEXT, Paint.Align.CENTER);
+        label(c, nar ? (partyHidden ? "▾" : "▴") : partyHidden ? "»" : "«", hide.centerX(), hide.centerY() + 12 * u, 36 * u, TAB_TEXT, Paint.Align.CENTER);
         hits.add(new Hit(hide, H_HIDE, 0));
 
         // the deck at the bottom
-        float deckH = deck ? 104 * u : 0;
+        int deckRows = nar ? 2 : 1, deckPer = DECK.length / deckRows;
+        float deckH = deck ? deckRows * 104 * u + (deckRows - 1) * 10 * u : 0;
         if (deck) {
-            float bw = (w - 2 * pad - 5 * 10 * u) / 6f, by = h - pad - deckH;
+            float bw = (w - 2 * pad - (deckPer - 1) * 10 * u) / deckPer, top0 = h - pad - deckH;
             for (int i = 0; i < DECK.length; i++) {
-                RectF r = new RectF(pad + i * (bw + 10 * u), by, pad + i * (bw + 10 * u) + bw, by + deckH);
+                float bx = pad + (i % deckPer) * (bw + 10 * u), by = top0 + (i / deckPer) * (104 * u + 10 * u);
+                RectF r = new RectF(bx, by, bx + bw, by + 104 * u);
                 int cmd = DECK_CMD[i];
                 boolean on = isOn(cmd);
                 boolean hot = pressed != null && pressed.kind == H_CMD && pressed.arg == cmd && pressed.box.equals(r);
@@ -285,9 +325,18 @@ public class CompanionView extends View {
 
         // body: the party column and the tab's panel
         float top = tabTop + tabH + gap, bottom = h - pad - deckH - (deck ? gap : 0);
-        float colW = partyHidden ? 0 : 410 * u;
-        if (!partyHidden) drawParty(c, new RectF(pad, top, pad + colW, bottom), battle, u);
-        RectF panel = new RectF(pad + (partyHidden ? 0 : colW + gap), top, w - pad, bottom);
+        RectF panel;
+        if (nar) {                     // the party across the top, the details below
+            JSONArray members = state.optJSONArray("party");
+            int slots = Math.max(1, Math.min(4, members == null ? 0 : members.length()));   // no empty cards
+            float partyH = partyHidden ? 0 : Math.min(slots * 170 * u + (slots - 1) * 10 * u, (bottom - top) * 0.5f);
+            if (!partyHidden) drawParty(c, new RectF(pad, top, w - pad, top + partyH), battle, slots, u);
+            panel = new RectF(pad, top + (partyHidden ? 0 : partyH + gap), w - pad, bottom);
+        } else {
+            float colW = partyHidden ? 0 : 410 * u;
+            if (!partyHidden) drawParty(c, new RectF(pad, top, pad + colW, bottom), battle, 4, u);
+            panel = new RectF(pad + (partyHidden ? 0 : colW + gap), top, w - pad, bottom);
+        }
         window(c, panel, u);
         panelBox.set(panel);
         int show = tab;
@@ -348,11 +397,11 @@ public class CompanionView extends View {
 
     private static final int[] FACE_TINT = { 0xFF6A4A2A, 0xFF2A2A5A, 0xFF4A5A6A, 0xFF6A2A3A, 0xFF5A3A6A, 0xFF7A3A1A, 0xFF3A6A5A, 0xFF6A5A2A };
 
-    private void drawParty(Canvas c, RectF col, boolean battle, float u) {
+    private void drawParty(Canvas c, RectF col, boolean battle, int slots, float u) {
         JSONArray party = state.optJSONArray("party");
-        int n = party == null ? 0 : Math.min(4, party.length());
-        float g = 10 * u, ch = (col.height() - g * 3) / 4f;
-        for (int i = 0; i < 4; i++) {
+        int n = party == null ? 0 : Math.min(slots, party.length());
+        float g = 10 * u, ch = (col.height() - g * (slots - 1)) / slots;
+        for (int i = 0; i < slots; i++) {
             RectF r = new RectF(col.left, col.top + i * (ch + g), col.right, col.top + i * (ch + g) + ch);
             window(c, r, u);
             if (i >= n) continue;
@@ -553,12 +602,13 @@ public class CompanionView extends View {
     private void drawItems(Canvas c, RectF in, float u) {
         JSONArray items = state.optJSONArray("items");
         if (items == null || items.length() == 0) { empty(c, in, "No items", u); return; }
-        float colGap = 24 * u, cw = (in.width() - colGap) / 2f, rh = 52 * u;
+        int cols = narrow() ? 1 : 2;
+        float colGap = 24 * u, cw = (in.width() - colGap * (cols - 1)) / cols, rh = 52 * u;
         float start = in.top - scroll;
         for (int i = 0; i < items.length(); i++) {
             JSONObject it = items.optJSONObject(i);
             if (it == null) continue;
-            float x = in.left + (i % 2) * (cw + colGap), y = start + (i / 2) * rh;
+            float x = in.left + (i % cols) * (cw + colGap), y = start + (i / cols) * rh;
             if (y + rh < in.top - 4 * u || y > in.bottom + 4 * u) continue;
             Bitmap ic = image(it.optString("icon"));
             float is = 36 * u;
@@ -569,9 +619,9 @@ public class CompanionView extends View {
             float nw = text.measureText(n) + 16 * u;
             label(c, ellipsize(clean(it.optString("n")), cw - is - 14 * u - nw, 26 * u), x + is + 12 * u, y + rh / 2 + 9 * u, 26 * u, TEXT, Paint.Align.LEFT);
             label(c, n, x + cw, y + rh / 2 + 9 * u, 26 * u, LABEL, Paint.Align.RIGHT);
-            if (i % 2 == 1 || i == items.length() - 1) rowLine(c, in, y + rh, u);
+            if (i % cols == cols - 1 || i == items.length() - 1) rowLine(c, in, y + rh, u);
         }
-        contentH = ((items.length() + 1) / 2) * rh;
+        contentH = ((items.length() + cols - 1) / cols) * rh;
     }
 
     private void drawKeys(Canvas c, RectF in, float u) {
@@ -611,9 +661,10 @@ public class CompanionView extends View {
         // the four boosters
         String[] names = { "High speed", "No battles", "Battle assist", "9999 damage" };
         int[] cmds = { CMD_SPEED, CMD_BATTLES, CMD_BPLUS, CMD_DMG };
-        float bw = (in.width() - 12 * u) / 2f, bh = 70 * u;
+        int bcols = narrow() ? 1 : 2;
+        float bw = (in.width() - 12 * u * (bcols - 1)) / bcols, bh = 70 * u;
         for (int i = 0; i < 4; i++) {
-            float x = in.left + (i % 2) * (bw + 12 * u), by = y + (i / 2) * (bh + 12 * u);
+            float x = in.left + (i % bcols) * (bw + 12 * u), by = y + (i / bcols) * (bh + 12 * u);
             RectF r = new RectF(x, by, x + bw, by + bh);
             boolean on = isOn(cmds[i]);
             boolean hot = pressed != null && pressed.kind == H_CMD && pressed.arg == cmds[i] && pressed.box.equals(r);
@@ -628,7 +679,7 @@ public class CompanionView extends View {
             label(c, on ? "ON" : "OFF", lx + lw + 14 * u, r.centerY() + 9 * u, 22 * u, on ? GOLD : TEXT, Paint.Align.LEFT);
             hits.add(new Hit(r, H_CMD, cmds[i]));
         }
-        y += 2 * (bh + 12 * u) + 4 * u;
+        y += (4 / bcols) * (bh + 12 * u) + 4 * u;
 
         // the counters
         JSONObject k = state.optJSONObject("counters");
@@ -645,8 +696,9 @@ public class CompanionView extends View {
         for (int i = 0; i < rows.length; i++) {
             float ry = y + i * rh;
             text.setTypeface(sans);
-            label(c, rows[i][0], in.left, ry + rh / 2 + 10 * u, 28 * u, LABEL, Paint.Align.LEFT);
-            label(c, rows[i][1], in.right, ry + rh / 2 + 10 * u, 28 * u, TEXT, Paint.Align.RIGHT);
+            float fs = Math.min(28 * u, rh * 0.6f);   // narrow: less room, smaller rows
+            label(c, rows[i][0], in.left, ry + rh / 2 + fs * 0.36f, fs, LABEL, Paint.Align.LEFT);
+            label(c, rows[i][1], in.right, ry + rh / 2 + fs * 0.36f, fs, TEXT, Paint.Align.RIGHT);
             if (i < rows.length - 1) rowLine(c, in, ry + rh, u);
         }
     }
@@ -772,6 +824,21 @@ public class CompanionView extends View {
             src.set(sx[i], sy[j], sx[i + 1], sy[j + 1]);
             c.drawBitmap(fr, src, new RectF(dx[i], dy[j], dx[i + 1], dy[j + 1]), bmpPaint);
         }
+    }
+
+    /** The hide button: a small window with a chevron pointing to the panels' outer edge. */
+    private void drawHideButton(Canvas c, RectF b, boolean hot, float u) {
+        window(c, b, u);
+        if (hot) { fill.setShader(null); fill.setColor(0x55FFFFFF); c.drawRoundRect(b, 10 * u, 10 * u, fill); }
+        line.setColor(TEXT);
+        line.setStrokeWidth(5 * u);
+        line.setStrokeCap(Paint.Cap.ROUND);
+        float cx = b.centerX(), cy = b.centerY(), dx = b.width() * 0.13f, dy = b.height() * 0.22f;
+        // panels at the game's right hide to the right: the chevron points away from the game
+        float tip = hideAtLeft ? cx + dx : cx - dx, back = hideAtLeft ? cx - dx : cx + dx;
+        c.drawLine(back, cy - dy, tip, cy, line);
+        c.drawLine(tip, cy, back, cy + dy, line);
+        line.setStrokeCap(Paint.Cap.BUTT);
     }
 
     private void tabShape(Canvas c, RectF r, boolean sel, boolean hot, float u) {
@@ -961,6 +1028,9 @@ public class CompanionView extends View {
             case H_HIDE:
                 partyHidden = !partyHidden;
                 prefs.edit().putBoolean("deck_party_hidden", partyHidden).apply();
+                return;
+            case H_PANELS:
+                if (onHide != null) onHide.run();
                 return;
             case H_BOOK:
                 if (GameActivity.hasGuide()) { GameActivity.toggleGuideFromPanel(); return; }   // the player's own page

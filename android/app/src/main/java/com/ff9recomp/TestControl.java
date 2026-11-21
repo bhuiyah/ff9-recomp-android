@@ -48,6 +48,8 @@ public class TestControl extends BroadcastReceiver {
         for (String k : GameActivity.HOTKEYS) TYPES.put(k, Integer.class);   // key codes, 0 = none
         TYPES.put("touch_left_stick", Boolean.class);
         TYPES.put("touch_vibrate", Boolean.class);
+        // Side by side: the panels hidden by their button (GameActivity reads it when the game starts)
+        TYPES.put("side_hidden", Boolean.class);
         // Game files > Storage's own folder ("" = the app's own folder), switched without moving anything (tests)
         TYPES.put("storage_custom", String.class);
     }

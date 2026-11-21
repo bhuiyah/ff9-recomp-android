@@ -41,6 +41,9 @@ final class Settings {
                 "Keep its shape", "Stretch narrow areas", "Stretch everything to the screen"),
         // GitHub issues 2 and 8: the phone held upright (GameActivity.arrange)
         new Option("portrait", "Portrait (phones)", "Hold the phone upright: the game on top, the party panels and touch controls under it.", 0),
+        // FF7Recomp's 1.1.35/1.1.36 (GameActivity.arrangeSide): one wide screen, the game and the panels beside each other
+        new Option("side", "Side by side (wide screens)", "The game and the second screen's panels (party, map, items, Save/Load, speed) beside each other on one screen. Held upright it is like Portrait.", 0),
+        new Option("side_left", "Side by side: panels on the left", "The panels at the game's left instead of its right. In the game, the button at the top of the panels hides them; the tab at the screen's edge brings them back.", 0),
         new Option("skip_intros", "Skip logos", "Straight to the title screen.", 1),
         new Option("speed", "Speed-up booster", "How fast the game runs while the High Speed booster is on.", 1,
                 "2x", "3x", "4x", "5x"),

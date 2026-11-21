@@ -871,3 +871,28 @@ The swirl stayed black. Three things, all needed:
 - FF9_TRACE_SFX=1 also logs each start (`sfx start <handle> ... again= f<frame> t=`).
 - Thor, battle 336 with `-memoria-party 1`: both Blk Mag opens logged the second start one frame
   later as kept; command-menu cursor taps 13-14 frames apart still restart (#48 unchanged).
+
+## Side by side layout (0.1.47, FF7Recomp 1.1.35/1.1.36 parity)
+
+- Settings > Display > "Side by side (wide screens)" (`side`) and "Side by side: panels on the left"
+  (`side_left`). On a window wider than tall, GameActivity.arrangeSide puts the game frame (GameFrame
+  `side`: the picture's shape, 16:9 with Widescreen on, 4:3 off, as tall as the window and at most
+  75% of the width, centred) beside the CompanionView. Held upright it is Portrait's layout. The
+  second-screen Presentation is not shown while it is on.
+- The panels' header has a hide button on the edge next to the game. It hides them (GameFrame
+  `sideFull`), and a 30x76 dp tab at that screen edge (ShowTab) brings them back. Only visibility and
+  the frame's measured size change: the SurfaceView is never re-parented, so the game runs on and the
+  surface resizes (log: `window back: 1920x1080` / `1440x810`). The state is the launcher pref
+  `side_hidden`, read when the game starts.
+- CompanionView.narrow() (width < 0.8 x height): u = min(H/1500, W/620); header in two rows (place and
+  book, then time and gil), tabs 3+3 with the party toggle (▴/▾), the party cards above the details
+  (as many as the party has, up to half the column), deck 3+3, items in one column, the Extras
+  boosters one under another.
+- The on-screen pad lies over the game frame, not the panels (FF7's lies over the whole window as
+  pass-through; here it covered the panels' tabs and deck), and over the whole window while they are
+  hidden.
+- adb: TestControl SET takes `side`, `side_left`, `side_hidden`. Thor (1920x1080, widescreen), battle
+  336: right and left, hide/show mid-battle (the battle kept running), started hidden, the usual
+  layout unchanged, touch controls Always (panel taps reach the panels, the D-pad moves the game's
+  cursor). Game surface 60 fps steady (SurfaceFlinger --latency) and the play clock kept real time
+  in both layouts.

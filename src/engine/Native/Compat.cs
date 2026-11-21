@@ -28,6 +28,7 @@ public static class Compat {
         InstallMovieClock();
         InstallNoWalkmeshFix();
         InstallSoundBackend();
+        InstallSoloudRestart();
         ProfPostRender.Install();
     }
 
@@ -79,6 +80,76 @@ public static class Compat {
             } catch (Exception e) { Log.Info("sound backend: " + e.Message); }
         }
         return 2;
+    }
+
+    // A sound effect played again while it is still playing (the menu cursor, GitHub issue 48).
+    // The game keeps one sound per effect and reuses it while it exists (SoundPlayer.StaticCreateSound
+    // returns early when SoundCtrl_IsExist), then calls SoundCtrl_Start on it again. Memoria's
+    // SaXAudio backend (the PC's) starts the voice over from the start (SaXAudio.StartAtTime). Its
+    // SoLoud one only unpauses it, which does nothing to a voice that is playing: the sound ran to
+    // its end and the presses in between were silent. SdLibAPIWithSoloud.SdSoundSystem_SoundCtrl_Start
+    // is replaced by the same steps, and a voice that is already playing is sought back to the start
+    // (or to the offset asked for) as on the PC.
+    static FieldInfo? slSounds, slSoloud, slBankID, slPauseStack;
+    static MethodInfo? slValid, slGetPause, slTime, slStop, slFade, slSchedStop, slSeek, slSetPause;
+
+    static void InstallSoloudRestart() {
+        const BindingFlags I = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var t = Type.GetType("Global.Sound.SoLoud.SdLibAPIWithSoloud, Assembly-CSharp");
+        var start = t?.GetMethod("SdSoundSystem_SoundCtrl_Start", I, null, new[] { typeof(int), typeof(int) }, null);
+        var sound = t?.GetNestedType("Sound", BindingFlags.NonPublic | BindingFlags.Public);
+        var so = Type.GetType("SoLoud.Soloud, Assembly-CSharp");
+        slSounds = t?.GetField("sounds", I);
+        slSoloud = t?.GetField("soloud", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        slBankID = sound?.GetField("bankID", I);
+        slPauseStack = sound?.GetField("pauseStack", I);
+        MethodInfo? S(string n, params Type[] a) => so?.GetMethod(n, BindingFlags.Instance | BindingFlags.Public, null, a, null);
+        var u = typeof(uint);
+        slValid = S("isValidVoiceHandle", u); slGetPause = S("getPause", u); slTime = S("getStreamTime", u);
+        slStop = S("stop", u); slFade = S("fadeVolume", u, typeof(float), typeof(double));
+        slSchedStop = S("scheduleStop", u, typeof(double)); slSeek = S("seek", u, typeof(double));
+        slSetPause = S("setPause", u, typeof(int));
+        if (start == null || slSounds == null || slSoloud == null || slBankID == null || slPauseStack == null || slValid == null || slGetPause == null
+            || slTime == null || slStop == null || slFade == null || slSchedStop == null || slSeek == null || slSetPause == null) {
+            Log.Warn("sound restart: this Memoria's SoLoud backend differs; left as it is");
+            return;
+        }
+        Detour(start, M(nameof(SoloudStart)));
+    }
+
+    static int SoloudStart(object self, int soundID, int offsetTimeMSec) {
+        var sounds = (System.Collections.IDictionary)slSounds!.GetValue(self)!;
+        if (!sounds.Contains(soundID)) return 0;
+        object so = slSoloud!.GetValue(null)!;
+        int Int(MethodInfo m, uint v) => (int)m.Invoke(so, new object[] { v })!;
+        object me = sounds[soundID]!;
+        int bank = (int)slBankID!.GetValue(me)!;
+        uint h = (uint)soundID;
+        // started before: a voice is made paused (SdSoundSystem_CreateSound) and unpaused here
+        bool again = Int(slValid!, h) != 0 && Int(slGetPause!, h) == 0;
+        // as Memoria: the other voices of this sound that have only just started stop; with two or
+        // more playing, the one furthest along fades out
+        var others = new System.Collections.Generic.List<uint>();
+        foreach (System.Collections.DictionaryEntry e in sounds) {
+            uint k = Convert.ToUInt32(e.Key);
+            if (k != h && (int)slBankID.GetValue(e.Value)! == bank && Int(slGetPause!, k) == 0) others.Add(k);
+        }
+        int playing = 0;
+        uint oldest = 0;
+        double oldestTime = 0;
+        foreach (uint k in others) {
+            double time = (double)slTime!.Invoke(so, new object[] { k })!;
+            if (time < 0.01) { slStop!.Invoke(so, new object[] { k }); continue; }
+            playing++;
+            if (time > oldestTime) { oldest = k; oldestTime = time; }
+        }
+        if (playing >= 2) {
+            slFade!.Invoke(so, new object[] { oldest, 0f, 0.1 });
+            slSchedStop!.Invoke(so, new object[] { oldest, 0.1 });
+        }
+        if (offsetTimeMSec > 0 || again) slSeek!.Invoke(so, new object[] { h, offsetTimeMSec / 1000.0 });
+        if ((int)slPauseStack!.GetValue(me)! == 0) slSetPause!.Invoke(so, new object[] { h, 0 });
+        return 1;
     }
 
     // Movies with another frame rate than the game's 15 (Moguri's 30 fps ones). MovieMaterial.Open

@@ -830,3 +830,17 @@ The swirl stayed black. Three things, all needed:
   without L3 (Retroid Pocket Classic). L2/R2 that come as key events (digital triggers) now reach
   the game as a full pull. Settings shows a Hotkeys list. Tested: `input keycombination
   KEYCODE_BUTTON_SELECT KEYCODE_BUTTON_R2` logs "panel: booster HighSpeedMode on", then off.
+
+## Menu sounds restart on every press (0.1.44, GitHub #48)
+
+- The game keeps one sound per effect: SoundPlayer.StaticCreateSound returns early while the
+  profile's SoundID still exists (SoundCtrl_IsExist), and SoundCtrl_Start is called on that same
+  voice again. Memoria's SaXAudio backend (PC) restarts it (SaXAudio.StartAtTime). Its SoLoud one
+  only unpauses it, a no-op for a voice that is playing, so the cursor sound (103, se000001, about
+  0.27 s) ran to its end and presses in between made no sound.
+- Compat.SoloudStart replaces SdLibAPIWithSoloud.SdSoundSystem_SoundCtrl_Start with the same steps
+  (other voices of the sound that just started stop; with two or more playing, the oldest fades),
+  and seeks a voice that is already playing back to the start (or the offset asked for).
+- FF9_TRACE_SFX=1 logs, each frame they change, the effect voices with stream time and position.
+- Tested on the Thor's title menu: three fast Downs moved the cursor twice and gave one sound before,
+  two moves and two sounds after (the position goes back to 0 on the second press).

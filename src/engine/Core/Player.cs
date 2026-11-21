@@ -46,8 +46,21 @@ public sealed class NScene {
 }
 
 public static class Player {
-    public static readonly List<NMonoBehaviour> Behaviours = new();
+    static readonly List<NMonoBehaviour> behaviours = new();
+    // destroyed behaviours leave the list here the next time it is read, in one pass: removing
+    // each from a list of ~10,000 as it was destroyed made a menu that rebuilds a few thousand
+    // objects at once (Ability, L1/R1 to the next character) take 350-500 ms for that frame (GitHub #47)
+    static readonly HashSet<NMonoBehaviour> forgotten = new();
+    /// Every live behaviour, in the order they were created.
+    public static List<NMonoBehaviour> Behaviours {
+        get {
+            if (forgotten.Count > 0) { behaviours.RemoveAll(forgotten.Contains); forgotten.Clear(); }
+            return behaviours;
+        }
+    }
     static readonly List<NMonoBehaviour> pendingStart = new();
+    static readonly HashSet<NMonoBehaviour> pendingSet = new();   // the same, for membership tests
+    static void QueueStart(NMonoBehaviour b) { if (pendingSet.Add(b)) pendingStart.Add(b); }
     public static NScene? ActiveScene;
     public static string LastSceneLoaded = "";
     public static string[] SceneNames = Array.Empty<string>();
@@ -255,20 +268,21 @@ public static class Player {
     /// its Start stayed queued for good, and RunStarts sorted and walked the queue twice a frame:
     /// GitHub #47).
     public static void Forget(NMonoBehaviour b) {
-        Behaviours.Remove(b);
-        pendingStart.Remove(b);
+        forgotten.Add(b);
+        if (pendingSet.Remove(b)) pendingStart.Remove(b);
     }
 
     static void RunStarts() {
         while (pendingStart.Count > 0) {
             var list = pendingStart.ToArray();
             pendingStart.Clear();
+            pendingSet.Clear();
             foreach (var b in list.OrderBy(b => b.ExecutionOrder)) {
                 if (b.Started) continue;
                 // one that can't run now leaves the queue: enabling it or activating its object
                 // calls Awaken, which queues it again (inactive menus kept hundreds queued, sorted
                 // and walked twice a frame for the rest of the session: GitHub #47)
-                if (!Runs(b)) { if (b.EnabledCalled && b.Managed != null && Registry.Get(b.Managed) == b) pendingStart.Add(b); continue; }
+                if (!Runs(b)) { if (b.EnabledCalled && b.Managed != null && Registry.Get(b.Managed) == b) QueueStart(b); continue; }
                 b.Started = true;
                 ScriptMethods.Call(b, b.Methods.Start);
             }
@@ -279,7 +293,7 @@ public static class Player {
     /// Registers a newly created MonoBehaviour (scene load, AddComponent, Instantiate).
     public static void AddBehaviour(NMonoBehaviour b) {
         b.Methods = ScriptMethods.For(b.Managed!.GetType());
-        Behaviours.Add(b);
+        behaviours.Add(b);   // new, so never in `forgotten`: no compaction needed
     }
 
     /// Awake + OnEnable for a behaviour whose GameObject is active (Unity does this at creation
@@ -293,7 +307,7 @@ public static class Player {
         if (b.Enabled && !b.EnabledCalled && Registry.Get(b.Managed) == b) {
             b.EnabledCalled = true;
             ScriptMethods.Call(b, b.Methods.OnEnable);
-            if (!b.Started && !pendingStart.Contains(b)) pendingStart.Add(b);
+            if (!b.Started) QueueStart(b);
         }
     }
 

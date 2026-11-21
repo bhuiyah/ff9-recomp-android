@@ -844,3 +844,17 @@ The swirl stayed black. Three things, all needed:
 - FF9_TRACE_SFX=1 logs, each frame they change, the effect voices with stream time and position.
 - Tested on the Thor's title menu: three fast Downs moved the cursor twice and gave one sound before,
   two moves and two sounds after (the position goes back to 0 on the second press).
+
+## Destroyed behaviours leave the update list in one pass (0.1.45, GitHub #47)
+
+- #47 follow-up: L1/R1 to the next character in Ability (Use/Equip) hitched. Thor, world map save
+  1:2, FF9_TRACE_PROFILE=30: each switch rebuilds the ability rows (~4,300 objects created and as
+  many destroyed) and one frame took 345-498 ms; "destroy" alone was ~120 ms of it. Player.Forget
+  did Behaviours.Remove (a linear search of ~10,500) for each destroyed behaviour, and Awaken a
+  pendingStart.Contains for each new one.
+- Now Forget marks the behaviour in a set and the list drops marked ones in one RemoveAll the next
+  time Player.Behaviours is read (order kept); AddBehaviour appends to the list directly. The Start
+  queue has a HashSet beside it for membership.
+- After: destroy ~0.06 ms per 30-frame window, switches 77-117 ms. What is left is creating the
+  rows (UIKeyTrigger.Update, RecycleListPopulator.RepositionList, coroutines). Equip's own L1/R1
+  stayed at 60 FPS before and after; battle 336 ran normally.

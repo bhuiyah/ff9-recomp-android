@@ -147,10 +147,27 @@ public static class Compat {
             slFade!.Invoke(so, new object[] { oldest, 0f, 0.1 });
             slSchedStop!.Invoke(so, new object[] { oldest, 0.1 });
         }
-        if (offsetTimeMSec > 0 || again) slSeek!.Invoke(so, new object[] { h, offsetTimeMSec / 1000.0 });
+        // started again on the next frame or so (GitHub issue 53: A on Blk Mag plays the select
+        // sound, building the spell list makes that frame ~100 ms long, and on the next one the
+        // list's cursor plays it again): no button was pressed twice that fast, and starting over
+        // would be heard as a second beep. Counted in frames, as a long frame passes sound time.
+        double now = again ? (double)slTime!.Invoke(so, new object[] { h })! : 0;
+        long frame = Core.Clock.Frame;
+        bool soon = again && offsetTimeMSec <= 0 && slStartFrame.TryGetValue(h, out long f0) && frame - f0 <= RestartMinFrames;
+        if (!soon) {
+            if (slStartFrame.Count > 512) slStartFrame.Clear();
+            slStartFrame[h] = frame;
+        }
+        if (traceSfx) Log.Info($"sfx start {h:x} bank {bank} again={again} f{frame} t={now:0.000} offset={offsetTimeMSec}{(soon ? " (just started: kept)" : "")}");
+        if (offsetTimeMSec > 0 || (again && !soon)) slSeek!.Invoke(so, new object[] { h, offsetTimeMSec / 1000.0 });
         if ((int)slPauseStack!.GetValue(me)! == 0) slSetPause!.Invoke(so, new object[] { h, 0 });
         return 1;
     }
+
+    static readonly bool traceSfx = Environment.GetEnvironmentVariable("FF9_TRACE_SFX") != null;
+    static readonly System.Collections.Generic.Dictionary<uint, long> slStartFrame = new();
+    static readonly int RestartMinFrames =
+        int.TryParse(Environment.GetEnvironmentVariable("FF9_TEST_SFX_RESTART_FRAMES"), out int n) ? n : 2;
 
     // Movies with another frame rate than the game's 15 (Moguri's 30 fps ones). MovieMaterial.Open
     // sets playSpeed = 15 / the movie's rate, right for its fixed step (1/15 s a frame, FMVs with

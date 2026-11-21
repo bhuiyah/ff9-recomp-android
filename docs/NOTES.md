@@ -858,3 +858,16 @@ The swirl stayed black. Three things, all needed:
 - After: destroy ~0.06 ms per 30-frame window, switches 77-117 ms. What is left is creating the
   rows (UIKeyTrigger.Update, RecycleListPopulator.RepositionList, coroutines). Equip's own L1/R1
   stayed at 60 FPS before and after; battle 336 ran normally.
+
+## One select sound when a spell list opens (0.1.46, GitHub #53)
+
+- A on Blk Mag plays the select sound (103, se000001) in BattleHUD.OnKeyConfirm; building the
+  ability list makes that frame ~100 ms long, and on the next frame the list's cursor
+  (ButtonGroupState.ActiveButtonChanged) plays 103 again. Since 0.1.44 a second start restarts the
+  voice, heard as a double beep (before, it was a no-op).
+- Compat.SoloudStart keeps a voice playing when it is started again within 2 game frames of its
+  last start (FF9_TEST_SFX_RESTART_FRAMES). Frames, not sound time: the long frame had already
+  played 96-117 ms of the sound.
+- FF9_TRACE_SFX=1 also logs each start (`sfx start <handle> ... again= f<frame> t=`).
+- Thor, battle 336 with `-memoria-party 1`: both Blk Mag opens logged the second start one frame
+  later as kept; command-menu cursor taps 13-14 frames apart still restart (#48 unchanged).

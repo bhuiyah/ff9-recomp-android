@@ -56,14 +56,38 @@ final class GameInstall {
         "x64/FF9_Data/Managed/Memoria.Prime.dll", "StreamingAssets/p0data11.bin", "StreamingAssets/p0data5.bin", "Memoria.ini",
     };
 
-    String missingMessage() {
+    /**
+     * The game's asset bundles, each tens to hundreds of MB. A copy without one (or with a cut one)
+     * started to a black screen with no sound (GitHub #56: p0data3/4/62/63/7 missing, p0data61 empty),
+     * since the game skips a bundle it can't find. The p0data101..621 copies of other languages are optional.
+     */
+    static final String[] BUNDLES = {
+        "p0data11", "p0data12", "p0data13", "p0data14", "p0data15", "p0data16", "p0data17", "p0data18", "p0data19",
+        "p0data2", "p0data3", "p0data4", "p0data5", "p0data61", "p0data62", "p0data63", "p0data7",
+    };
+    static final long MIN_BUNDLE = 1 << 20;     // the smallest real one (p0data7) is about 68 MB
+
+    /** The required files missing from (or empty or cut in) the game folder, '/' separated. */
+    static List<String> missingFiles(File game) {
         List<String> m = new ArrayList<>();
         for (String r : REQUIRED) { File f = new File(game, r); if (!f.isFile() || f.length() == 0) m.add(r); }
+        for (String b : BUNDLES) {
+            String r = "StreamingAssets/" + b + ".bin";
+            File f = new File(game, r);
+            if ((!f.isFile() || f.length() < MIN_BUNDLE) && !m.contains(r)) m.add(r);
+        }
+        return m;
+    }
+
+    String missingMessage() {
+        List<String> m = missingFiles(game);
         if (m.contains("x64/FF9_Data/Managed/Memoria.Prime.dll") || m.isEmpty() && !memoriaPatched())
             return "Memoria isn't installed in this copy of the game" + (m.isEmpty() ? " (its game code is the plain game's)" : "")
                     + ". Install Memoria below, or install it on the PC and import the folder again.";
         if (m.isEmpty()) return null;
-        return "Files missing from the imported copy: " + String.join(", ", m);
+        return "Files missing or incomplete in the imported copy: " + String.join(", ", m)
+                + ". Without them the game starts to a black screen. Import the full game folder again "
+                + "(check on the PC that StreamingAssets holds all its p0data files), or use Repair from Steam below.";
     }
 
     /** Whether Memoria is missing (so Install Memoria can fix the copy). */

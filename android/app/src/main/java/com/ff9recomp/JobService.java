@@ -232,6 +232,11 @@ public class JobService extends Service {
             }
             case IMPORT:
                 gi.importFrom(Uri.parse(arg), w -> status = w, ranBefore);
+                {
+                    // the picked folder itself may lack files (GitHub #56): say so instead of "ready"
+                    String missing = gi.hasGame() && !gi.needsMemoria() ? gi.missingMessage() : null;
+                    if (missing != null) return "The game folder is copied, but it isn't complete. " + missing;
+                }
                 return "Your FINAL FANTASY IX is ready" + (gi.hasMoguri() ? ", with Moguri Mod." : ".") + " Press Play (or Start).";
             default: {
                 int place = movePlace(kind);

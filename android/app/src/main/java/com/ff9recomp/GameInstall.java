@@ -58,7 +58,7 @@ final class GameInstall {
 
     /**
      * The game's asset bundles, each tens to hundreds of MB. A copy without one (or with a cut one)
-     * started to a black screen with no sound (GitHub #56: p0data3/4/62/63/7 missing, p0data61 empty),
+     * started to a black screen with no sound (GitHub #56: p0data3/4/62/63/7 missing, p0data61 cut short),
      * since the game skips a bundle it can't find. The p0data101..621 copies of other languages are optional.
      */
     static final String[] BUNDLES = {
@@ -74,9 +74,33 @@ final class GameInstall {
         for (String b : BUNDLES) {
             String r = "StreamingAssets/" + b + ".bin";
             File f = new File(game, r);
-            if ((!f.isFile() || f.length() < MIN_BUNDLE) && !m.contains(r)) m.add(r);
+            if ((!f.isFile() || f.length() < MIN_BUNDLE || f.length() < declaredSize(f)) && !m.contains(r)) m.add(r);
         }
         return m;
+    }
+
+    /**
+     * The file size a UnityRaw bundle's header declares (signature, format, two version strings, then
+     * the total size as a big-endian u32), or 0 if it can't be read. A copy cut short keeps its header,
+     * so this catches a bundle that is big but incomplete (GitHub #56: a cut p0data61 = no music).
+     */
+    static long declaredSize(File f) {
+        byte[] h = new byte[128];
+        int n = 0;
+        try (InputStream in = new java.io.FileInputStream(f)) {
+            for (int k; n < h.length && (k = in.read(h, n, h.length - n)) > 0; ) n += k;
+        } catch (IOException e) { return 0; }
+        int p = 0;
+        for (int str = 0; str < 3; str++) {          // signature, then (after the format) two version strings
+            while (p < n && h[p] != 0) p++;
+            p++;
+            if (str == 0) {
+                if (!new String(h, 0, Math.min(p - 1, n), StandardCharsets.US_ASCII).equals("UnityRaw")) return 0;
+                p += 4;
+            }
+        }
+        if (p + 4 > n) return 0;
+        return ((h[p] & 0xFFL) << 24) | ((h[p + 1] & 0xFFL) << 16) | ((h[p + 2] & 0xFFL) << 8) | (h[p + 3] & 0xFFL);
     }
 
     String missingMessage() {

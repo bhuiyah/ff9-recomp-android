@@ -941,3 +941,11 @@ The swirl stayed black. Three things, all needed:
 - Thor, Adreno 740, 1080p: field 30 + 29 a second, 52 ms after; battle 336 15 + 45, 104 ms; title 60 + 0;
   opening movie 15. SurfaceFlinger --latency: a new frame nearly every refresh. Sleep/resume works.
   `FF9_TRACE_FRAMEGEN=1` in env.txt logs each frame. Other GPUs, stretch and swapped screens: not tested.
+
+## The launcher menu follows the cursor at once (0.1.53, GitHub #59)
+- A command's focus listener built its page inside the d-pad key event: every bundle header was
+  checked 2-3 times, Android was asked how the game last closed, and Get mods built every row.
+- Now `openSoon` moves the cursor and the page is built 120 ms after it rests (`buildWaitingPage`);
+  going right first builds it at once (`flushPage`). `checkGame` keeps the game's state until
+  `refresh()`, Game files or a job. Get mods builds 12 rows, then 4 per frame; ModDescription.xml is
+  parsed once per file version. logcat `FF9Launcher: page X built in N ms`.

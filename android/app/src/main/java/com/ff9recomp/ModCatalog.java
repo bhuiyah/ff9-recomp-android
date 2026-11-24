@@ -228,7 +228,8 @@ final class ModCatalog {
     /** Catalog mods with an update. */
     static List<Mod> updates(Context c) {
         List<Mod> out = new ArrayList<>();
-        for (Mod m : mods(c)) if (updatable(c, m)) out.add(m);
+        Set<String> names = gameNames(c);
+        for (Mod m : mods(c)) if (maybeInstalled(names, m) && updatable(c, m)) out.add(m);
         return out;
     }
 
@@ -237,7 +238,8 @@ final class ModCatalog {
     static List<String> installedFolders(Context c) {
         List<String> out = new ArrayList<>();
         for (String f : enabled(c)) if (new File(game(c), f).isDirectory()) out.add(f);
-        for (Mod m : mods(c)) if (installed(c, m) && !containsIgnoreCase(out, m.folder)) out.add(m.folder);
+        Set<String> names = gameNames(c);
+        for (Mod m : mods(c)) if (maybeInstalled(names, m) && installed(c, m) && !containsIgnoreCase(out, m.folder)) out.add(m.folder);
         // a mod copied in by hand (GitHub issue 9): a folder laid out as Memoria's mods are
         File[] dirs = game(c).listFiles(File::isDirectory);
         if (dirs != null) {
@@ -267,6 +269,20 @@ final class ModCatalog {
     static File folder(Context c, Mod m) { return new File(game(c), m.folder); }
     static boolean installed(Context c, Mod m) { return folder(c, m).isDirectory(); }
 
+    /** The names in the game folder, lower case: one look instead of one per catalog mod. */
+    static Set<String> gameNames(Context c) {
+        Set<String> out = new java.util.HashSet<>();
+        String[] l = game(c).list();
+        if (l != null) for (String s : l) out.add(key(s));
+        return out;
+    }
+
+    /** False when the mod's folder can't be there; installed() for the rest. */
+    static boolean maybeInstalled(Set<String> names, Mod m) {
+        String k = key(m.folder);
+        return k.startsWith(".") || k.startsWith("/") || names.contains(k.split("/", 2)[0]);
+    }
+
     /** The version installed by this app (files/mods/<folder>.version), or "" when unknown. */
     static String installedVersion(Context c, Mod m) {
         try { return new String(Files.readAllBytes(new File(dir(c), safe(m.folder) + ".version").toPath()), StandardCharsets.UTF_8).trim(); }
@@ -279,8 +295,9 @@ final class ModCatalog {
     }
 
     static boolean updatable(Context c, Mod m) {
+        if (!installed(c, m)) return false;
         String v = installedVersion(c, m);
-        return installed(c, m) && !v.isEmpty() && Updater.compare(m.version, v) > 0;
+        return !v.isEmpty() && Updater.compare(m.version, v) > 0;
     }
 
     private static String safe(String s) { return s.replaceAll("[^A-Za-z0-9._-]", "_"); }
@@ -438,11 +455,22 @@ final class ModCatalog {
 
     /** The mod's own ModDescription.xml, or null. */
     private static Mod description(Context c, String folder) {
+        File f = new File(new File(game(c), folder), "ModDescription.xml");
+        long size = f.length(), time = f.lastModified();     // 0, 0: no file
+        if (size == 0) return null;
+        String k = f.getPath() + ":" + size + ":" + time;
+        synchronized (ModCatalog.class) { if (descriptions.containsKey(k)) return descriptions.get(k); }
+        Mod m = null;
         try {
-            List<Mod> l = parse(new File(new File(game(c), folder), "ModDescription.xml"), false);
-            return l.isEmpty() ? null : l.get(0);
+            List<Mod> l = parse(f, false);
+            if (!l.isEmpty()) m = l.get(0);
         } catch (IOException e) { return null; }
+        synchronized (ModCatalog.class) { descriptions.put(k, m); }
+        return m;
     }
+
+    /** Parsed ModDescription.xml files, by path, size and time (null: no mod in it). */
+    private static final Map<String, Mod> descriptions = new java.util.HashMap<>();
 
     // ---- writing
 

@@ -218,9 +218,60 @@ public class LauncherActivity extends Activity {
 
     private void show(String which) { page = which; refresh(); focusContent(); }
 
-    private String shownPage;
+    private String shownPage, builtPage;      // the page on screen, and the one before this build
+
+    // what the status line says about the game, looked up once per refresh(): checking every bundle
+    // and asking Android how the game last closed is slow, and moving the cursor over the commands
+    // changes neither (GitHub issue 59)
+    private String gameState = "", gameMissing, gameExit;
+    private boolean gameReady, gameNeedsMemoria, gameJob;
+
+    private void checkGame() {
+        gameJob = JobService.busy();      // an import or a download changes the answer: ask again after it
+        boolean has = install.hasGame();
+        gameNeedsMemoria = install.needsMemoria();
+        gameMissing = has ? install.missingMessage() : null;
+        gameReady = has && gameMissing == null;
+        gameState = !has ? "not imported" : gameNeedsMemoria ? "Memoria missing" : gameMissing != null ? "files missing" : "ready";
+        gameExit = Reports.lastGameExit(this);
+    }
+
+    // The cursor moves over the commands at once; the page follows when it rests on one, so holding
+    // the d-pad doesn't build every page on the way (GitHub issue 59).
+    private static final int PAGE_DELAY_MS = 120;
+    private boolean pageWaiting;
+    private final Runnable buildWaiting = this::buildWaitingPage;
+
+    private void openSoon(String which) {
+        page = which;
+        pageWaiting = true;
+        for (Map.Entry<String, Button> e : nav.entrySet()) e.getValue().setSelected(e.getKey().equals(which));
+        ticker.removeCallbacks(buildWaiting);
+        ticker.postDelayed(buildWaiting, PAGE_DELAY_MS);
+    }
+
+    /** The page the cursor is on, now if it is still waiting. */
+    private void flushPage() { if (pageWaiting) buildWaitingPage(); }
+
+    private void buildWaitingPage() {
+        if (page.equals(shownPage)) {                // the cursor came back to the page on screen
+            ticker.removeCallbacks(buildWaiting);
+            pageWaiting = false;
+            return;
+        }
+        if (gameJob || JobService.busy() || page.equals("game")) checkGame();
+        buildPage();
+    }
 
     private void refresh() {
+        checkGame();
+        buildPage();
+    }
+
+    private void buildPage() {
+        long t0 = android.os.SystemClock.uptimeMillis();
+        ticker.removeCallbacks(buildWaiting);
+        pageWaiting = false;
         // the cursor and the scroll position stay where they were when the same page is rebuilt
         // (a mod switched on, a download finished): FF7Recomp #32/#47
         boolean same = page.equals(shownPage);
@@ -229,10 +280,12 @@ public class LauncherActivity extends Activity {
         // Get mods scrolls its list and its categories on their own (the page itself doesn't)
         int keepList = same && catScroll != null ? catScroll.getScrollY() : 0, keepCats = same && catsScroll != null ? catsScroll.getScrollY() : 0;
         catScroll = catsScroll = null;
+        builtPage = shownPage;
         shownPage = page;
         updateStatus();
         updateDownloadsLabel();
-        playButton.setEnabled(ready() && !busy);
+        playButton.setEnabled(gameReady && !busy);
+        catBuild++;
         content.removeAllViews();
         View v;
         switch (page) {
@@ -274,6 +327,7 @@ public class LauncherActivity extends Activity {
                 }
             });
         }
+        android.util.Log.i("FF9Launcher", "page " + page + " built in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
     }
 
     /** Where the focus is inside the page: a view's "focus:" tag, else its child-index path. */
@@ -313,12 +367,11 @@ public class LauncherActivity extends Activity {
     }
 
     private void updateStatus() {
-        String game = !install.hasGame() ? "not imported" : install.needsMemoria() ? "Memoria missing" : install.missingMessage() != null ? "files missing" : "ready";
         int on = ModCatalog.enabled(this).size();
-        StringBuilder s = new StringBuilder("Game: " + game + "   ·   Mods: " + on + " on   ·   Frame rate: " + Settings.valueText(this, Settings.find("fps")));
+        StringBuilder s = new StringBuilder("Game: " + gameState + "   ·   Mods: " + on + " on   ·   Frame rate: " + Settings.valueText(this, Settings.find("fps")));
         Updater.Release up = Updater.available;
         if (up != null) s.append("   ·   Update ").append(up.version).append(" is out (Game files)");
-        String exit = Reports.lastGameExit(this);
+        String exit = gameExit;
         String pend = JobService.pending(this);
         if (JobService.busy()) s.append("\n").append(JobService.status);
         else if (pend != null) s.append("\n").append(JobService.title(pend)).append(" is paused: Continue is under Game files.");
@@ -859,8 +912,10 @@ public class LauncherActivity extends Activity {
         ViewGroup r = new FlowRow(this);
         CheckBox cb = new CheckBox(this);
         String name = shown.name;
-        String ver = m == null ? "added by hand" : ModCatalog.installedVersion(this, m).isEmpty() ? "" : "v" + ModCatalog.installedVersion(this, m);
-        if (m != null && ModCatalog.updatable(this, m)) ver += (ver.isEmpty() ? "" : ", ") + "update " + m.version;
+        String have = m == null ? "" : ModCatalog.installedVersion(this, m);
+        boolean update = m != null && ModCatalog.updatable(this, m);
+        String ver = m == null ? "added by hand" : have.isEmpty() ? "" : "v" + have;
+        if (update) ver += (ver.isEmpty() ? "" : ", ") + "update " + m.version;
         int opts = ModCatalog.choiceCount(this, folder);
         if (opts > 0) ver += (ver.isEmpty() ? "" : ", ") + opts + " options under Info";
         cb.setText(withNote((enabled ? (pos + 1) + ".  " : "") + name, ver));
@@ -880,7 +935,7 @@ public class LauncherActivity extends Activity {
             r.addView(up);
             r.addView(dn);
         }
-        if (m != null && ModCatalog.updatable(this, m) && DownloadQueue.get(this).pending(m) == null)
+        if (update && DownloadQueue.get(this).pending(m) == null)
             r.addView(small("Update", v -> queueMods(java.util.Collections.singletonList(m))));
         Button info = small("Info", v -> { modShown = shown; modBack = "mods"; show("mod"); });
         info.setTag("focus:info:" + folder);
@@ -924,7 +979,7 @@ public class LauncherActivity extends Activity {
     private final android.os.Handler ticker = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable searchNow = () -> {
         if (!"catalog".equals(page) || catList == null) return;
-        fillCatalogList();
+        fillCatalogList(true);
         theme(catList);
     };
 
@@ -983,10 +1038,11 @@ public class LauncherActivity extends Activity {
         split.setPadding(0, dp(6), 0, 0);
         LinearLayout cats = column();
         int installed = 0;
+        java.util.Set<String> names = ModCatalog.gameNames(this);
         java.util.Map<String, Integer> counts = new HashMap<>();
         for (ModCatalog.Mod m : all) {
             counts.merge(m.category.isEmpty() ? "Other" : m.category, 1, Integer::sum);
-            if (ModCatalog.installed(this, m)) installed++;
+            if (ModCatalog.maybeInstalled(names, m) && ModCatalog.installed(this, m)) installed++;
         }
         cats.addView(category("All", all.size(), catCategory == null && !catInstalledOnly, v -> { catCategory = null; catInstalledOnly = false; refresh(); }));
         cats.addView(category("Installed", installed, catInstalledOnly, v -> { catCategory = null; catInstalledOnly = true; refresh(); }));
@@ -1008,7 +1064,7 @@ public class LauncherActivity extends Activity {
         vlp.setMargins(dp(smallScreen ? 4 : 8), 0, dp(smallScreen ? 6 : 12), 0);
         split.addView(vline, vlp);
         catList = column();
-        fillCatalogList();
+        fillCatalogList(!"catalog".equals(builtPage));
         catScroll = new ScrollView(this);
         catScroll.addView(catList);
         split.addView(catScroll, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
@@ -1016,8 +1072,15 @@ public class LauncherActivity extends Activity {
         return pageCol;
     }
 
-    private void fillCatalogList() {
+    private int catBuild;
+    private static final int CATALOG_ROWS = 12;
+
+    /** later: only the rows a screen shows now, the others a few at a time between frames (the
+     *  whole catalog took most of the page's time, GitHub issue 59); else all at once, so the
+     *  focus and the scroll position of a page rebuilt in place can be put back. */
+    private void fillCatalogList(boolean later) {
         LinearLayout list = catList;
+        int build = ++catBuild;
         list.removeAllViews();
         actionSlots.clear();
         List<ModCatalog.Mod> all = ModCatalog.mods(this);
@@ -1027,14 +1090,23 @@ public class LauncherActivity extends Activity {
         }
         List<ModCatalog.Mod> found = ModCatalog.search(this, all, catQuery, catCategory, catInstalledOnly);
         if (found.isEmpty()) list.addView(text("Nothing matches.", 16, DIM));
-        for (int i = 0; i < found.size(); i++) {
+        addCatalogRows(list, found, 0, later ? CATALOG_ROWS : found.size(), build);
+    }
+
+    private void addCatalogRows(LinearLayout list, List<ModCatalog.Mod> found, int from, int count, int build) {
+        if (build != catBuild || isDestroyed()) return;      // the page was left or the list filled again
+        int to = Math.min(found.size(), from + count);
+        for (int i = from; i < to; i++) {
             if (i > 0) {
                 View d = new View(this);
                 d.setBackgroundColor(0x30FFFFFF);
                 list.addView(d, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1))));
             }
-            list.addView(catalogRow(found.get(i), catCategory == null));
+            View row = catalogRow(found.get(i), catCategory == null);
+            theme(row);
+            list.addView(row);
         }
+        if (to < found.size()) ticker.postDelayed(() -> addCatalogRows(list, found, to, 4, build), 16);
     }
 
     /** A category in Get mods: its name and count; the one shown is lit. */
@@ -1112,7 +1184,7 @@ public class LauncherActivity extends Activity {
     /** A Get mods row's action: Install / Update / Installed, or its place in the queue. */
     private void fillAction(LinearLayout slot, ModCatalog.Mod m) {
         DownloadQueue.Item q = DownloadQueue.get(this).pending(m);
-        boolean inst = ModCatalog.installed(this, m), up = ModCatalog.updatable(this, m);
+        boolean inst = ModCatalog.installed(this, m), up = inst && ModCatalog.updatable(this, m);
         String label = q != null ? queueLabel(q, false) : !inst ? "\u0001install" : up ? "\u0001update" : "\u0001installed";
         if (label.equals(slot.getTag())) return;                     // unchanged: keep the focus
         boolean hadFocus = slot.hasFocus();
@@ -1587,16 +1659,16 @@ public class LauncherActivity extends Activity {
         col.addView(heading("Game files"));
         View job = jobSection();       // before "imported": a paused import over an old copy is not done
         if (job != null) col.addView(job);
-        boolean has = install.hasGame();
-        String missing = has ? install.missingMessage() : null;
+        boolean has = install.hasGame(), needsMemoria = has && gameNeedsMemoria;     // checkGame
+        String missing = has ? gameMissing : null;
         col.addView(text(!has ? "No game imported yet." : missing != null ? missing
                 : "Your FINAL FANTASY IX is imported" + (install.hasMoguri() ? ", with Moguri Mod." : "."), 15, has && missing == null ? ACCENT : TEXT));
         col.addView(note("Pick your FINAL FANTASY IX folder (the Steam copy, with Memoria installed; Moguri Mod if you use it). It is copied into the app once; nothing from the game ships in the app."));
         ViewGroup actions = buttons();
         actions.addView(button(has ? "Import again" : "Import game folder", v -> pickGame()));
-        if (has && install.needsMemoria()) actions.addView(button("Install Memoria", v -> installMemoria()));
+        if (needsMemoria) actions.addView(button("Install Memoria", v -> installMemoria()));
         col.addView(actions);
-        if (has && install.needsMemoria())
+        if (needsMemoria)
             col.addView(note("Install Memoria downloads Memoria " + MemoriaInstall.VERSION + " from its GitHub page (about 90 MB) and installs it into this copy, "
                     + "as its installer does on the PC. Your saves, mods and Memoria settings stay."));
 
@@ -2226,7 +2298,7 @@ public class LauncherActivity extends Activity {
         }
         if (down && (code == KeyEvent.KEYCODE_BUTTON_B || code == KeyEvent.KEYCODE_BACK) && e.getRepeatCount() == 0 && inContent(f)) Sfx.play(this, Sfx.CANCEL);
         // right from the commands goes into the page
-        if (code == KeyEvent.KEYCODE_DPAD_RIGHT && f != null && !inContent(f)) { if (down) { Sfx.play(this, Sfx.CURSOR); focusContent(); } return true; }
+        if (code == KeyEvent.KEYCODE_DPAD_RIGHT && f != null && !inContent(f)) { if (down) { flushPage(); Sfx.play(this, Sfx.CURSOR); focusContent(); } return true; }
         if (down && (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT)) {
             View before = f;
             boolean r = super.dispatchKeyEvent(e);
@@ -2372,7 +2444,7 @@ public class LauncherActivity extends Activity {
         b.setOnClickListener(v -> { if (which == null) play(); else show(which); });
         // moving the cursor over a command shows its page; A goes into it
         if (which != null) b.setOnFocusChangeListener((v, has) -> {
-            if (has && !page.equals(which) && !(page.equals("mod") && which.equals(modBack))) { page = which; refresh(); }
+            if (has && !page.equals(which) && !(page.equals("mod") && which.equals(modBack))) openSoon(which);
         });
         if (smallScreen) b.setTextSize(which == null ? 16 : 13);
         b.setSingleLine(true);

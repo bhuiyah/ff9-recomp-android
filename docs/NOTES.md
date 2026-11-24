@@ -949,3 +949,11 @@ The swirl stayed black. Three things, all needed:
   going right first builds it at once (`flushPage`). `checkGame` keeps the game's state until
   `refresh()`, Game files or a job. Get mods builds 12 rows, then 4 per frame; ModDescription.xml is
   parsed once per file version. logcat `FF9Launcher: page X built in N ms`.
+
+## Battle results screen (checked 2026-11-24)
+
+- The README said it was clipped at the left in widescreen. Not so on 0.1.53: EXP/AP, level up, items
+  and gil pages are centred at 1920x1080, and at FF9_TEST_SURFACE=2400x1080 and 1240x1080. Which
+  change fixed it wasn't looked into.
+- FF9_TEST_IMMORTAL=2 also holds the enemies at 1 HP (`-memoria-battle 1 -memoria-seed 1`: two A presses
+  win it and end on the results screen).

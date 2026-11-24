@@ -168,18 +168,28 @@ then open an issue here with what happened.
 
 ## Known limitations
 
-- **M4 (playable) is still in progress.** The opening, Alexandria, fields, battles and the world
-  map play on the Thor, but not every area has been played through.
-- The battle results screen is clipped at the left in widescreen.
-- Download from Steam and Steam achievements have not been tested with a Steam copy of the game
-  yet. Importing a GOG copy works.
+- **Not every area has been played through.** The opening, Alexandria, fields, battles and the world
+  map play on the Thor; a whole playthrough to the ending hasn't been confirmed yet. Please report
+  what you find.
+- Echo-S 9's voice lines don't play in dialogue
+  ([#7](https://github.com/bhuiyah/ff9-recomp-android/issues/7)).
+- An older set of FF9's own data files can break screens such as Config. **Repair from Steam** in the
+  launcher fixed it for a player; otherwise update the PC copy, install Memoria there and import it
+  again.
+- The developer has the GOG release. **Repair from Steam** has worked for a player with the Steam one,
+  but a whole download of the game, and Steam achievements, haven't been confirmed. Signing in to
+  Steam shows a QR code to scan with the Steam app on another device.
 - Steam Cloud saves were tested both ways with the PC version's Cloud save. A first Upload to an
   account with no Cloud save yet, and the Japanese game's Cloud file, have not been tested.
+- Frame generation has only been tried on the AYN Thor. Getting `Lossless.dll` from Steam or choosing
+  a file, a stretched picture and swapped screens haven't been tested with it.
 - Movies decode on the CPU, on several cores. The 2K video pack plays at full speed on the Thor;
   the 4K pack has not been timed.
-- The 120 FPS mode is experimental and runs warmer.
-- Only tested on the AYN Thor (Snapdragon 8 Gen 2). Other GPUs (Mali, PowerVR) should work, and
-  textures larger than a GPU allows are shrunk, but that hasn't been tried on one.
+- The 120 FPS mode is experimental and runs warmer. The default Smooth 60 also runs warm on some
+  devices: **Frame rate: Original** or a lower **Resolution** cools it down.
+- Developed and tested on the AYN Thor (Snapdragon 8 Gen 2). Players have also run it on other
+  Snapdragon devices (Odin 2 and 3, Retroid Pocket Flip 2 and Classic, Galaxy phones and more), on a
+  Dimensity 8300 (Mali), an Exynos 2100 (Mali) and a Pixel 10 Pro Fold (Tensor G5).
 
 ## Building the APK
 

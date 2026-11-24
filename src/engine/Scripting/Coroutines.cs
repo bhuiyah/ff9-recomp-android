@@ -152,11 +152,11 @@ public static class Coroutines {
     }
 
     // ---- Invoke / InvokeRepeating ----
-    sealed class Invocation { public NMonoBehaviour Owner = null!; public string Method = ""; public float At, Repeat; public bool Done; }
+    sealed class Invocation { public NMonoBehaviour Owner = null!; public string Method = ""; public float At, Repeat; public long Seq; public bool Done; }
     static readonly List<Invocation> invokes = new();
 
     public static void Invoke(NMonoBehaviour mb, string name, float delay, float repeat) =>
-        invokes.Add(new Invocation { Owner = mb, Method = name, At = Clock.Now + delay, Repeat = repeat });
+        invokes.Add(new Invocation { Owner = mb, Method = name, At = Clock.Now + delay, Repeat = repeat, Seq = Player.NextCallSeq() });
 
     public static void CancelInvoke(NMonoBehaviour mb, string? name) {
         foreach (var i in invokes) if (i.Owner == mb && (name == null || i.Method == name)) i.Done = true;
@@ -165,11 +165,14 @@ public static class Coroutines {
     public static bool IsInvoking(NMonoBehaviour mb, string? name) =>
         invokes.Exists(i => !i.Done && i.Owner == mb && (name == null || i.Method == name));
 
-    public static void RunInvokes() {
+    /// Runs the due invokes, each after `startsBefore` of its place in call order.
+    public static void RunInvokes(Action<long> startsBefore) {
         int n = invokes.Count;
         for (int k = 0; k < n; k++) {
             var i = invokes[k];
             if (i.Done || Clock.Now < i.At) continue;
+            startsBefore(i.Seq);
+            if (i.Done) continue;
             if (Registry.Get(i.Owner.Managed) == null) { i.Done = true; continue; }
             if (i.Owner.Enabled && i.Owner.GameObject.ActiveInHierarchy || i.Repeat <= 0)
                 ScriptMethods.Call(i.Owner, ScriptMethods.Find(i.Owner.Managed!.GetType(), i.Method));

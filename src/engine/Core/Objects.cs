@@ -64,6 +64,7 @@ public static class Components {
 }
 
 public sealed class NMonoBehaviour : NComponent {
+    public long StartSeq;   // when it was queued for Start (Player.NextCallSeq)
     public bool Awoken, Started, EnabledCalled;
     public int ExecutionOrder;
     public MonoBehaviour MB => (MonoBehaviour)Managed!;

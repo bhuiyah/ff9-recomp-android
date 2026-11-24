@@ -61,6 +61,10 @@ public static class Player {
     static readonly List<NMonoBehaviour> pendingStart = new();
     static readonly HashSet<NMonoBehaviour> pendingSet = new();   // the same, for membership tests
     static void QueueStart(NMonoBehaviour b) { if (pendingSet.Add(b)) pendingStart.Add(b); }
+    /// Orders the queue for Start against Invoke: taken when a behaviour is enabled and when an
+    /// Invoke is made.
+    static long callSeq;
+    public static long NextCallSeq() => ++callSeq;
     public static NScene? ActiveScene;
     public static string LastSceneLoaded = "";
     public static string[] SceneNames = Array.Empty<string>();
@@ -177,12 +181,14 @@ public static class Player {
         RunStarts();
         foreach (var b in Snapshot()) if (Runs(b) && b.Started) ScriptMethods.Call(b, b.Methods.Update);
         Prof.Part(2, ref ps);
-        // Unity queues Start for behaviours enabled during Update on the delayed-call queue ahead
-        // of Invoke and yield-null coroutines, so it runs this frame, before them and LateUpdate.
-        // (RecycleListPopulator's Invoke("RepositionList", 0) after a list's first SetActive: the
-        // table's Start ran after it and laid the rows out again, off the panel; GitHub #45.)
+        // Behaviours enabled during Update get Start this frame, before yield-null coroutines and
+        // LateUpdate, and in call order with the invokes: RecycleListPopulator's
+        // Invoke("RepositionList", 0) runs after the Start of the table activated before it (which
+        // otherwise lays the rows out again, off the panel; GitHub #45) and before the Start of the
+        // row's UIKeyNavigation enabled after it (which selects the row and scrolls to it;
+        // RepositionList then stopped the scroll at the top of the list; GitHub #57).
+        Coroutines.RunInvokes(RunStarts);
         RunStarts();
-        Coroutines.RunInvokes();
         Coroutines.Run(Coroutines.Phase.Update);
         Prof.Part(3, ref ps);
         AsyncOps.Tick();
@@ -272,11 +278,15 @@ public static class Player {
         if (pendingSet.Remove(b)) pendingStart.Remove(b);
     }
 
-    static void RunStarts() {
+    static void RunStarts() => RunStarts(long.MaxValue);
+
+    /// Start for the queued behaviours enabled before call `before` (see NextCallSeq).
+    static void RunStarts(long before) {
         while (pendingStart.Count > 0) {
-            var list = pendingStart.ToArray();
-            pendingStart.Clear();
-            pendingSet.Clear();
+            var list = pendingStart.Where(b => b.StartSeq < before).ToArray();
+            if (list.Length == 0) break;
+            if (list.Length == pendingStart.Count) { pendingStart.Clear(); pendingSet.Clear(); }
+            else { pendingStart.RemoveAll(b => b.StartSeq < before); pendingSet.ExceptWith(list); }
             foreach (var b in list.OrderBy(b => b.ExecutionOrder)) {
                 if (b.Started) continue;
                 // one that can't run now leaves the queue: enabling it or activating its object
@@ -286,7 +296,7 @@ public static class Player {
                 b.Started = true;
                 ScriptMethods.Call(b, b.Methods.Start);
             }
-            if (pendingStart.All(b => !Runs(b))) break;
+            if (pendingStart.All(b => b.StartSeq >= before || !Runs(b))) break;
         }
     }
 
@@ -307,7 +317,7 @@ public static class Player {
         if (b.Enabled && !b.EnabledCalled && Registry.Get(b.Managed) == b) {
             b.EnabledCalled = true;
             ScriptMethods.Call(b, b.Methods.OnEnable);
-            if (!b.Started) QueueStart(b);
+            if (!b.Started) { b.StartSeq = NextCallSeq(); QueueStart(b); }
         }
     }
 

@@ -898,3 +898,19 @@ The swirl stayed black. Three things, all needed:
   layout unchanged, touch controls Always (panel taps reach the panels, the D-pad moves the game's
   cursor). Game surface 60 fps steady (SurfaceFlinger --latency) and the play clock kept real time
   in both layouts.
+
+## A reopened list scrolls to its cursor (0.1.51, GitHub #57)
+
+- Battle ability list, cursor on row 7, cancel, reopen: cursor on row 7 but the box showed rows 0-4.
+  `JumpToIndex` Invokes `RepositionList`, then the ActiveGroup setter enables the new rows; the row's
+  `UIKeyNavigation.Start` selects it and begins the SpringPanel, which `RepositionList` stops. 0.1.36
+  ran every Start before every Invoke, so the spring died at the top of the list.
+- Start (`StartSeq`, taken when enabled) and due Invokes now run in call order after Update. The
+  table's Start still comes before the Invoke (#45). Whether Unity orders them so is not known; no PC
+  comparison was made.
+- Thor, `-memoria-battle 336 -memoria-party 2`, `FF9_TRACE_LIST=1` (cursor row, IN/OUT of the clip,
+  spring): old order left rows 7, 8 and 10 OUT; new order IN within two frames on 12 of 12 reopens.
+  The last row (15) reopens at row 0 in both orders. Env.txt only takes FF9_TEST_*/FF9_TRACE_*.
+- With the shared test save the list takes another path: each reopen puts the cursor one row lower
+  (7 -> 8 -> 9; seen on 0.1.50 too), in the box. Cause unknown.
+- Not the cause of #57's missing Shell, which hasn't been reproduced.

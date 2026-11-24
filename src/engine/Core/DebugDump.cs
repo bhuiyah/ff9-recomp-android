@@ -117,6 +117,34 @@ public static class DebugDump {
         } catch (Exception e) { Console.WriteLine($"probe btl failed at {stage}: " + e); }
     }
 
+
+    static readonly bool traceList = Environment.GetEnvironmentVariable("FF9_TRACE_LIST") != null;
+    static readonly Dictionary<RecycleListPopulator, string> listLast = new();
+    /// FF9_TRACE_LIST: cursor row, scroll and spring of the active lists, each frame they change.
+    static void TraceList() {
+        const System.Reflection.BindingFlags F = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+        foreach (var b in Player.Behaviours.ToList()) {
+            if (b.Managed is not RecycleListPopulator l || !b.GameObject.ActiveInHierarchy || l.panel == null) continue;
+            try {
+                int act = (int)typeof(RecycleListPopulator).GetField("activeNumber", F)!.GetValue(l)!;
+                var sel = UICamera.selectedObject;
+                string row = "-", vis = "-";
+                var it = sel == null ? null : sel.GetComponent<RecycleListItem>();
+                if (it != null) {
+                    row = it.ItemDataIndex + (sel!.activeInHierarchy ? "" : "(off)");
+                    float y = l.panel.transform.InverseTransformPoint(sel.transform.position).y;
+                    var c = l.panel.finalClipRegion;
+                    vis = $"{(Math.Abs(y - c.y) < c.w / 2 ? "IN" : "OUT")} y={y:F0} clip={c.y:F0}/{c.w:F0}";
+                }
+                var sp = l.panel.GetComponent<SpringPanel>();
+                string st = $"{GoName(l.gameObject)} act={act} row={row} {vis} group={ButtonGroupState.ActiveGroup} spring={(sp != null && sp.enabled ? sp.target.y.ToString("F0") : "off")}";
+                if (listLast.TryGetValue(l, out var o) && o == st) continue;
+                listLast[l] = st;
+                Console.WriteLine($"trace list f{Clock.Frame} {st}");
+            } catch (Exception e) { Console.WriteLine("trace list: " + e.Message); }
+        }
+    }
+
     static readonly int nameTestAt = int.TryParse(Environment.GetEnvironmentVariable("FF9_NAMETEST"), out var nt) ? nt : -1;
 
     /// FF9_NAMETEST=frame: reads every live object's name through UnityEngine.Object.name and checks it.
@@ -260,6 +288,7 @@ public static class DebugDump {
         if (warpWorld != null && int.TryParse(warpWorld.Split(':')[0], out int wf) && Clock.Frame == wf)
             try { WarpWorld(); } catch (Exception e) { Console.WriteLine("warp failed: " + e); }
         if (Clock.Frame == nameTestAt) NameTest();
+        if (traceList) TraceList();
         if (probeBattle && Clock.Frame % 5 == 0) ProbeBattle();
         if (probe && (Clock.Frame % 500 == 250 || Clock.Frame == probeAt)) Probe();
         if (!frames.Contains(Clock.Frame)) return;

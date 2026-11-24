@@ -914,3 +914,14 @@ The swirl stayed black. Three things, all needed:
 - With the shared test save the list takes another path: each reopen puts the cursor one row lower
   (7 -> 8 -> 9; seen on 0.1.50 too), in the box. Cause unknown.
 - Not the cause of #57's missing Shell, which hasn't been reproduced.
+
+## Button remapping, busy Steam servers, dry run (FF8Recomp parity)
+
+- `ButtonMap`: Settings > Buttons, launcher pref `button_map` (a permutation of 12 buttons, L3/R3
+  included), applied in `GameActivity.send` to the controller only (key triggers included). The Select
+  combos see the mapped buttons; hotkeys are taken from the key code before it; Memoria's Swap confirm
+  and cancel comes after it. adb: SET `button_map`; PAD with `--ez physical true` goes through it.
+- Steam chunks: 10 tries, each on the next server, pauses 1 s to 30 s; Pause ends the wait.
+- `files/steam/dry-run`: achievements are logged, not sent, and stay waiting.
+- Checked, nothing to do: Android 16's Java heap at 0x02000000 (lowmem.cpp uses MAP_FIXED_NOREPLACE
+  from 0x10000000 up; x64jit.c and sfx_plugin.c map anywhere).

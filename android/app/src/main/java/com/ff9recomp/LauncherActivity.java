@@ -489,6 +489,15 @@ public class LauncherActivity extends Activity {
                 }
             }
         }
+        TextView bh = heading("Buttons");
+        bh.setPadding(0, dp(14), 0, dp(4));
+        col.addView(bh);
+        col.addView(note("Make any button of the controller work as another: the two swap, so none is lost. "
+                + "Swap confirm and cancel (above) comes on top of this, the Select combos follow it, and a hotkey's button does only its hotkey. "
+                + "The on-screen buttons and the keyboard stay as they are."));
+        ViewGroup maps = buttons();
+        fillButtonMap(maps, -1);
+        col.addView(maps);
         // the controller's hotkeys (GameActivity.send), GitHub #51
         TextView hk = heading("Hotkeys");
         hk.setPadding(0, dp(14), 0, dp(4));
@@ -535,6 +544,31 @@ public class LauncherActivity extends Activity {
         mr.addView(button("Edit Memoria.ini...", v -> editMemoriaIni()));
         col.addView(mr);
         return col;
+    }
+
+    /** Settings > Buttons: one button per controller button (ButtonMap), and a way back. focus: the one to land on, or -1. */
+    private void fillButtonMap(ViewGroup maps, int focus) {
+        maps.removeAllViews();
+        android.content.SharedPreferences p = Settings.prefs(this);
+        int[] map = ButtonMap.read(p);
+        for (int i = 0; i < map.length; i++) {
+            final int b = i;
+            Button row = button(ButtonMap.NAMES[b] + (map[b] == b ? "" : " works as " + ButtonMap.NAMES[map[b]]), v ->
+                    styled(new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                            .setTitle(ButtonMap.NAMES[b] + " works as")
+                            .setSingleChoiceItems(ButtonMap.NAMES, ButtonMap.read(p)[b], (d, which) -> {
+                                ButtonMap.choose(p, b, which);
+                                d.dismiss();
+                                fillButtonMap(maps, b);
+                            })
+                            .setNegativeButton("Cancel", null)
+                            .show()));
+            maps.addView(row);
+            if (b == focus) row.requestFocus();
+        }
+        Button reset = button("Reset the buttons", v -> { ButtonMap.reset(p); fillButtonMap(maps, ButtonMap.NAMES.length); });
+        maps.addView(reset);
+        if (focus == ButtonMap.NAMES.length) reset.requestFocus();
     }
 
     private final java.util.List<Runnable> hotkeyLabels = new java.util.ArrayList<>();

@@ -43,6 +43,7 @@ public class TestControl extends BroadcastReceiver {
         for (String k : Settings.INTS) TYPES.put(k, Integer.class);
         for (String k : Settings.BOOLS) TYPES.put(k, Boolean.class);
         TYPES.put("guide_url", String.class);
+        TYPES.put("button_map", String.class);      // ButtonMap: "1,0,2,3,4,5,6,7,8,9,10,11"
         // On-screen controls > Size and layout: right stick, L3 and R3
         TYPES.put("touch_extra", Boolean.class);
         for (String k : GameActivity.HOTKEYS) TYPES.put(k, Integer.class);   // key codes, 0 = none

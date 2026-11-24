@@ -85,6 +85,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         // the on-screen pad (Settings > Touch controls: Auto shows it when no controller is connected)
         // Settings > Hotkeys: a button of the player's own for each hotkey (GitHub #51)
         for (int i = 0; i < HOTKEYS.length; i++) hotkeyCode[i] = prefs.getInt(HOTKEYS[i], 0);
+        buttonMap = ButtonMap.read(prefs);
         touchMode = prefs.getInt("touch_controls", 0);
         if (touchMode != 2) {
             touch = new TouchControls(this, (tb, tl, tr, tlx, tly, trx, try_) -> { touchButtons = tb; touchLt = tl; touchRt = tr; touchLx = tlx; touchLy = tly; touchRx = trx; touchRy = try_; send(); });
@@ -991,13 +992,18 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         return 0;
     }
 
+    private int[] buttonMap = ButtonMap.parse("");
+
     private void send() {
-        int all = buttons | dpad | testButtons | keyButtons | touchButtons;
+        // the controller's own buttons, as Settings > Buttons has them
+        int[] pad = ButtonMap.apply(buttonMap, buttons | testPhysical, Math.max(lt, keyLt), Math.max(rt, keyRt));
+        int all = pad[0] | dpad | testButtons | keyButtons | touchButtons;
         // Select+Start together is ours (leave the game): the game sees neither while both are held
         int toGame = (all & (START | BACK)) == (START | BACK) ? all & ~(START | BACK) : all;
         // the on-screen sticks when the real ones are centred
         boolean realStick = rx != 0 || ry != 0, realLeft = lx != 0 || ly != 0;
-        int ltAll = Math.max(Math.max(lt, touchLt), keyLt), rtAll = Math.max(Math.max(rt, touchRt), keyRt);
+        int ltAll = Math.max(pad[1], touchLt), rtAll = Math.max(pad[2], touchRt);
+        if (testPhysical != 0) Log.i(TAG, "test pad " + Integer.toHexString(testPhysical) + " as " + Integer.toHexString(toGame) + " lt " + ltAll + " rt " + rtAll);
         nativePad(toGame, ltAll, rtAll, realLeft ? lx : touchLx, realLeft ? ly : touchLy,
                   realStick ? rx : touchRx, realStick ? ry : touchRy);
         // Select+L1: the guide or the panels on the second screen
@@ -1170,12 +1176,15 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     // ---- test API: adb holds pad buttons for a set time (`input keyevent` is too short for the
     // game to see reliably). Only the shell can send it (DUMP):
     //   am broadcast -a com.ff9recomp.test.PAD -p com.ff9recomp --ei buttons 0x1000 --ei ms 100
-    private int testButtons;
-    private final Runnable testRelease = () -> { testButtons = 0; send(); };
+    // --ez physical true: as the controller's own buttons, through Settings > Buttons
+    private int testButtons, testPhysical;
+    private final Runnable testRelease = () -> { testButtons = testPhysical = 0; send(); };
     private final android.content.BroadcastReceiver testPad = new android.content.BroadcastReceiver() {
         @Override public void onReceive(android.content.Context c, android.content.Intent i) {
             ui.removeCallbacks(testRelease);
-            testButtons = i.getIntExtra("buttons", 0);
+            boolean physical = i.getBooleanExtra("physical", false);
+            testButtons = physical ? 0 : i.getIntExtra("buttons", 0);
+            testPhysical = physical ? i.getIntExtra("buttons", 0) : 0;
             send();
             ui.postDelayed(testRelease, Math.max(16, Math.min(10000, i.getIntExtra("ms", 100))));
         }

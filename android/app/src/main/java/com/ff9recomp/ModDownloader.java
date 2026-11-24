@@ -35,7 +35,15 @@ final class ModDownloader {
     interface Progress { void update(String phase, long got, long total); }
     private static final Progress NONE = (a, b, t) -> { };
 
+    private static final String UNPACK = ".unpack-";
+
     private ModDownloader() {}
+
+    /** Unpack folders of installs that were cut short (the app was closed while unpacking): gigabytes nothing uses. */
+    static File[] leftovers(Context c) {
+        File[] f = new GameInstall(c).game.listFiles((d, n) -> n.startsWith(UNPACK));
+        return f != null ? f : new File[0];
+    }
 
     static void cancel() {
         cancelled = true;
@@ -51,10 +59,11 @@ final class ModDownloader {
         try {
             File dl = new File(ModCatalog.dir(c), "downloads");
             dl.mkdirs();
+            for (File f : leftovers(c)) Storage.deleteTree(f);
             File archive = archive(c, m);
             download(c, m, archive, pr);
             File game = new GameInstall(c).game;
-            File unpack = new File(game, ".unpack-" + System.nanoTime());
+            File unpack = new File(game, UNPACK + System.nanoTime());
             try {
                 status = "Unpacking " + m.name;
                 pr.update("Unpacking", 0, 0);

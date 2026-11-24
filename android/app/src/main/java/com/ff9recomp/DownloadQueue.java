@@ -99,6 +99,11 @@ final class DownloadQueue {
     }
 
     private void restore() {
+        // listed before a worker can start, so a new unpack is never among them; deleting thousands of files takes a while
+        File[] left = ModDownloader.leftovers(ctx);
+        if (left.length > 0) new Thread(() -> {
+            for (File f : left) { Log.i(TAG, "removing the unfinished unpack " + f.getName()); Storage.deleteTree(f); }
+        }, "mod-leftovers").start();
         java.util.Set<String> keep = new java.util.HashSet<>();
         try {
             if (saveFile.isFile())

@@ -131,6 +131,8 @@
 - Launcher: FF7Recomp's layout (commands left, help line top, page window right) in FF9 colours.
 - Mods: Memoria's catalog (files/mods/catalog.xml); installs into game/<InstallationPath>, FolderNames
   ordered by catalog priority; .7z unpacked by src/launcher/un7z.c (libff9launcher.so, LZMA SDK).
+  A solid block's files are written as they are decoded (issue 58: Moguri's 3.9 GB block was split
+  through a mapping, 4 GB of RSS). Unpack folders left by a closed app (game/.unpack-*) are removed.
 - Save states: copies of Memoria's autosave (files/savestates/slotN.dat); resume = restore +
   -memoria-autoload (start of the place, not the exact moment). Select+R1 in game.
 - Achievements: steamwrapper stand-in (src/host/win32.c) reports Steam ready, answers the stats

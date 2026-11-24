@@ -12,7 +12,10 @@
 // its dictionary size and written out as it goes: memory stays at the dictionary (64-256 MB),
 // whatever the size of the mod. Decoding a 2.4 GB block into one memory-mapped file (SYW Unified
 // Fields Textures) put gigabytes of dirty pages in the launcher's process and got it killed.
-// Other methods (BCJ2, filters) still go through a memory-mapped file. ff9_un7z_cancel() stops a
+// The block's files are written directly as they come out, each with its own CRC check. Streaming
+// the block into one file and splitting that file through a mapping did the same for a block of
+// many files (Moguri Mod: 3.9 GB, 3078 files; GitHub issue 58: stuck at 83%, then closed for low
+// memory) and needed the block's size twice on the storage. Other methods (BCJ2, filters) still go through a memory-mapped file. ff9_un7z_cancel() stops a
 // streaming decode.
 
 #include "7z.h"
@@ -129,9 +132,70 @@ static int write_all(int fd, const Byte *p, size_t n) {
     return 0;
 }
 
-/* Decode folder f as a stream into fd when it is one LZMA or LZMA2 coder; *crc gets the CRC32
- * of the output. SZ_ERROR_UNSUPPORTED: another kind of block (the caller decodes it in memory). */
-static SRes stream_folder(const CSzArEx *db, UInt32 f, ILookInStreamPtr look, int fd, UInt64 size, UInt32 *crc) {
+/* Where a streamed block's bytes go: its files, one after the other. */
+typedef struct {
+    const CSzArEx *db;
+    const char *outdir;
+    UInt32 f, next, last;  /* folder; next file to look at; one past its last file */
+    UInt32 cur;            /* the open file */
+    int fd;                /* -1: none open */
+    UInt64 left;           /* bytes still to come for the open file */
+    UInt32 sum;
+    UInt64 unsynced;
+    const char *what;      /* set on a failure: what failed (with errno in err) */
+    int err;
+} Sink;
+
+static SRes sink_close(Sink *k) {
+    int fd = k->fd;
+    k->fd = -1;
+    if (close(fd) != 0) { k->what = "cannot write"; k->err = errno; return SZ_ERROR_WRITE; }
+    if (SzBitWithVals_Check(&k->db->CRCs, k->cur) && CRC_GET_DIGEST(k->sum) != k->db->CRCs.Vals[k->cur]) return SZ_ERROR_CRC;
+    return SZ_OK;
+}
+
+/* Opens the block's next file. */
+static SRes sink_next(Sink *k) {
+    while (k->next < k->last && (k->db->FileToFolder[k->next] != k->f || SzArEx_IsDir(k->db, k->next))) k->next++;
+    if (k->next >= k->last) return SZ_ERROR_DATA;       /* more bytes than the files hold */
+    k->cur = k->next++;
+    k->left = SzArEx_GetFileSize(k->db, k->cur);
+    k->sum = CRC_INIT_VAL;
+    char *rel = entry_path(k->db, k->cur);
+    if (!rel) { k->what = "bad path in archive"; return SZ_ERROR_ARCHIVE; }
+    char path[4096];
+    int n = snprintf(path, sizeof path, "%s/%s", k->outdir, rel);
+    free(rel);
+    if (n < 0 || n >= (int)sizeof path) { k->what = "bad path in archive"; return SZ_ERROR_ARCHIVE; }
+    if (mkparent(path) != 0 || (k->fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0664)) < 0) {
+        k->what = "cannot write"; k->err = errno;
+        return SZ_ERROR_WRITE;
+    }
+    return SZ_OK;
+}
+
+static SRes sink_write(Sink *k, const Byte *p, size_t n) {
+    while (n) {
+        if (k->fd < 0) RINOK(sink_next(k))
+        size_t m = k->left < n ? (size_t)k->left : n;
+        if (write_all(k->fd, p, m) != 0) { k->what = "cannot write"; k->err = errno; return SZ_ERROR_WRITE; }
+        k->sum = CrcUpdate(k->sum, p, m);
+        p += m; n -= m;
+        k->left -= m;
+        k->unsynced += m;
+        if (k->unsynced >= (256u << 20)) {   /* keep the page cache from piling up */
+            fdatasync(k->fd);
+            posix_fadvise(k->fd, 0, 0, POSIX_FADV_DONTNEED);
+            k->unsynced = 0;
+        }
+        if (k->left == 0) RINOK(sink_close(k))
+    }
+    return SZ_OK;
+}
+
+/* Decode folder f as a stream into its files when it is one LZMA or LZMA2 coder.
+ * SZ_ERROR_UNSUPPORTED: another kind of block (the caller decodes it in memory). */
+static SRes stream_folder(const CSzArEx *db, UInt32 f, ILookInStreamPtr look, Sink *sink, UInt64 size) {
     const CSzAr *p = &db->db;
     CSzFolder folder;
     CSzData sd;
@@ -181,7 +245,7 @@ static SRes stream_folder(const CSzArEx *db, UInt32 f, ILookInStreamPtr look, in
     if (lzma2) Lzma2Dec_Init(&lz2); else LzmaDec_Init(&lz);
 
     SRes res = SZ_OK;
-    UInt64 out = 0, synced = 0;
+    UInt64 out = 0;
     UInt32 sum = CRC_INIT_VAL;
     for (;;) {
         if (g_cancel) { res = SZ_CANCELLED; break; }
@@ -203,15 +267,11 @@ static SRes stream_folder(const CSzArEx *db, UInt32 f, ILookInStreamPtr look, in
         if (res != SZ_OK) break;
         size_t made = dec->dicPos - start;
         if (made) {
-            if (write_all(fd, dic + start, made) != 0) { res = SZ_ERROR_WRITE; break; }
+            res = sink_write(sink, dic + start, made);
+            if (res != SZ_OK) break;
             sum = CrcUpdate(sum, dic + start, made);
             out += made;
             g_done += made;
-            if (out - synced >= (256u << 20)) {   /* keep the page cache from piling up */
-                fdatasync(fd);
-                posix_fadvise(fd, 0, (off_t)out, POSIX_FADV_DONTNEED);
-                synced = out;
-            }
         }
         if (dec->dicPos == dicSize) dec->dicPos = 0;    /* the dictionary is a ring */
         if (out == size) break;
@@ -220,8 +280,8 @@ static SRes stream_folder(const CSzArEx *db, UInt32 f, ILookInStreamPtr look, in
     }
     free(dic);
     if (lzma2) Lzma2Dec_FreeProbs(&lz2, &g_alloc); else LzmaDec_FreeProbs(&lz, &g_alloc);
-    *crc = CRC_GET_DIGEST(sum);
-    if (res == SZ_OK && SzBitWithVals_Check(&p->FolderCRCs, f) && *crc != p->FolderCRCs.Vals[f]) res = SZ_ERROR_CRC;
+    if (res == SZ_OK && SzBitWithVals_Check(&p->FolderCRCs, f) && CRC_GET_DIGEST(sum) != p->FolderCRCs.Vals[f]) res = SZ_ERROR_CRC;
+    if (res == SZ_OK && sink->fd >= 0) res = SZ_ERROR_DATA;     /* the last file is cut short */
     return res;
 }
 
@@ -287,41 +347,27 @@ int ff9_un7z(const char *archive, const char *outdir, char *err, size_t errlen) 
         if (size64 == 0) continue;
         if (size64 > (UInt64)(SIZE_MAX / 2)) { fail(err, errlen, "archive block too large", NULL); goto done; }
         size_t size = (size_t)size64;
+        UInt32 first = db.FolderToFile[f], last = db.FolderToFile[f + 1];
+        Sink sink = { .db = &db, .outdir = outdir, .f = f, .next = first, .last = last, .fd = -1 };
+        r = stream_folder(&db, f, &look.vt, &sink, size64);
+        if (sink.fd >= 0) close(sink.fd);
+        if (r == SZ_OK) continue;
+        if (r != SZ_ERROR_UNSUPPORTED) {
+            if (sink.what) fail(err, errlen, sink.what, sink.err ? strerror(sink.err) : NULL);
+            else fail(err, errlen, "cannot unpack", sres_name(r));
+            goto done;
+        }
+        /* a block not streamed: decode it into a mapped file and split that */
         char tmp[4096];
         snprintf(tmp, sizeof tmp, "%s/.7zblock%u", outdir, (unsigned)f);
         int fd = open(tmp, O_RDWR | O_CREAT | O_TRUNC, 0664);
         if (fd < 0) { fail(err, errlen, "cannot write", strerror(errno)); goto done; }
-        UInt32 first = db.FolderToFile[f], last = db.FolderToFile[f + 1];
-        UInt32 folder_crc = 0;
-        r = stream_folder(&db, f, &look.vt, fd, size64, &folder_crc);
-        int streamed = r == SZ_OK;
-        if (r != SZ_OK && r != SZ_ERROR_UNSUPPORTED) { fail(err, errlen, "cannot unpack", sres_name(r)); close(fd); unlink(tmp); goto done; }
-        if (streamed) {
-            /* the block is exactly one file (the common .iro mod): its CRC is the block's */
-            UInt32 nf = 0, one = first;
-            for (UInt32 i = first; i < last; i++) if (!SzArEx_IsDir(&db, i)) { nf++; one = i; }
-            if (nf == 1 && SzArEx_GetFileSize(&db, one) == size64) {
-                close(fd);
-                if (SzBitWithVals_Check(&db.CRCs, one) && folder_crc != db.CRCs.Vals[one]) {
-                    fail(err, errlen, "cannot unpack", "checksum mismatch"); unlink(tmp); goto done;
-                }
-                char *rel = entry_path(&db, one);
-                if (!rel) { fail(err, errlen, "bad path in archive", NULL); unlink(tmp); goto done; }
-                char path[4096];
-                snprintf(path, sizeof path, "%s/%s", outdir, rel);
-                free(rel);
-                if (mkparent(path) != 0 || rename(tmp, path) != 0) { fail(err, errlen, "cannot write", strerror(errno)); unlink(tmp); goto done; }
-                continue;
-            }
-        } else if (ftruncate(fd, (off_t)size) != 0) { fail(err, errlen, "not enough free space", strerror(errno)); close(fd); goto done; }
-        /* several files in the block (or a block not streamed): split it from the mapped file */
-        Byte *buf = (Byte *)mmap(NULL, size, streamed ? PROT_READ : PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        if (ftruncate(fd, (off_t)size) != 0) { fail(err, errlen, "not enough free space", strerror(errno)); close(fd); goto done; }
+        Byte *buf = (Byte *)mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         if (buf == MAP_FAILED) { fail(err, errlen, "cannot map the unpack file", strerror(errno)); close(fd); unlink(tmp); goto done; }
-        if (!streamed) {
-            r = SzAr_DecodeFolder(&db.db, f, &look.vt, db.dataPos, buf, size, &g_alloc);
-            if (r != SZ_OK) { fail(err, errlen, "cannot unpack", sres_name(r)); munmap(buf, size); close(fd); unlink(tmp); goto done; }
-            g_done += size64;
-        }
+        r = SzAr_DecodeFolder(&db.db, f, &look.vt, db.dataPos, buf, size, &g_alloc);
+        if (r != SZ_OK) { fail(err, errlen, "cannot unpack", sres_name(r)); munmap(buf, size); close(fd); unlink(tmp); goto done; }
+        g_done += size64;
 
         UInt64 start = db.UnpackPositions[first];
         UInt32 nfiles = 0, only = first;

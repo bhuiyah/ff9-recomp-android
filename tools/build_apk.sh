@@ -35,6 +35,10 @@ PREFIX="-ffile-prefix-map=$(pwd -W 2>/dev/null || pwd)=ff9recomp"
 "$TC/clang.exe" --target=aarch64-linux-android30 -O2 -fPIC -shared $PREFIX -w -Ithird_party/lzma   src/launcher/un7z.c third_party/lzma/*.c -llog -Wl,-soname,libff9launcher.so -o $OUT/jni/arm64-v8a/libff9launcher.so
 "$TC/llvm-strip.exe" --strip-debug $OUT/jni/arm64-v8a/libff9launcher.so
 
+# libff9fg.so: frame generation, loaded only when it is on
+[ out/framegen/libff9fg.so -nt src/framegen/framegen.cpp ] || bash tools/build_framegen.sh
+cp out/framegen/libff9fg.so $OUT/jni/arm64-v8a/
+
 # Mono's native libraries (the runtime and its components)
 cp $N/*.so $OUT/jni/arm64-v8a/
 # class libraries and the engine, unpacked on first start

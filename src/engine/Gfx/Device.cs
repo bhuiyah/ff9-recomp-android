@@ -28,8 +28,9 @@ public static unsafe class Device {
         if (EGL.eglInitialize(Display, &maj, &min) == 0) throw new Exception("eglInitialize failed " + EGL.eglGetError());
         EGL.eglBindAPI(EGL.OPENGL_ES_API);
         bool window = NativeWindow != IntPtr.Zero;
+        if (window) FrameGen.Init();
         int* attrs = stackalloc int[] {
-            EGL.SURFACE_TYPE, window ? EGL.WINDOW_BIT : EGL.PBUFFER_BIT, EGL.RENDERABLE_TYPE, EGL.OPENGL_ES3_BIT,
+            EGL.SURFACE_TYPE, window ? EGL.WINDOW_BIT | (FrameGen.On ? EGL.PBUFFER_BIT : 0) : EGL.PBUFFER_BIT, EGL.RENDERABLE_TYPE, EGL.OPENGL_ES3_BIT,
             EGL.RED_SIZE, 8, EGL.GREEN_SIZE, 8, EGL.BLUE_SIZE, 8, EGL.ALPHA_SIZE, 8, EGL.DEPTH_SIZE, 24, EGL.STENCIL_SIZE, 8, EGL.NONE,
         };
         IntPtr cfg;
@@ -52,6 +53,7 @@ public static unsafe class Device {
         EGL.eglQuerySurface(Display, Surface, EGL.HEIGHT, &h);
         Width = w; Height = h;
         EGL.eglSwapInterval(Display, 1);
+        FrameGen.Window(config);
         Ready = true;
         Log.Info($"GL: {GL.GetString(0x1F01)} / {GL.GetString(0x1F02)}, {(window ? "window" : "pbuffer")} {Width}x{Height}");
     }
@@ -61,8 +63,9 @@ public static unsafe class Device {
     public static void Present() {
         if (!Ready) return;
         if (ff9_window_gen() != windowGen) ChangeWindow();
-        EGL.eglSwapBuffers(Display, Surface);
-        ff9_frame_shown();
+        int shown = FrameGen.Present();
+        if (shown < 0) { EGL.eglSwapBuffers(Display, Surface); shown = 1; }
+        while (shown-- > 0) ff9_frame_shown();
         if (finish) GL.glFinish();
     }
 
@@ -76,6 +79,7 @@ public static unsafe class Device {
             if (gen == windowGen && Surface != IntPtr.Zero) break;
             windowGen = gen;
             if (Surface != IntPtr.Zero) {
+                FrameGen.WindowGone();
                 EGL.eglMakeCurrent(Display, IntPtr.Zero, IntPtr.Zero, Context);
                 EGL.eglDestroySurface(Display, Surface);
                 Surface = IntPtr.Zero;
@@ -90,6 +94,7 @@ public static unsafe class Device {
                     EGL.eglQuerySurface(Display, Surface, EGL.HEIGHT, &h);
                     Width = w; Height = h;
                     EGL.eglSwapInterval(Display, 1);
+                    FrameGen.Window(config);
                     Log.Info($"window back: {Width}x{Height}");
                 } else Log.Warn("EGL surface on the new window failed " + EGL.eglGetError());
             }

@@ -206,7 +206,9 @@ Moguri Mod and the authors of every mod in Memoria's catalog (downloaded from th
 [.NET runtime and Mono](https://github.com/dotnet/runtime) (MIT),
 [FFmpeg](https://ffmpeg.org/) (LGPL),
 [SoLoud](https://solhsa.com/soloud/) (zlib),
-the [LZMA SDK](https://www.7-zip.org/sdk.html) (public domain).
+the [LZMA SDK](https://www.7-zip.org/sdk.html) (public domain),
+[lsfg-vk-android](https://github.com/FrankBarretta/lsfg-vk-android) (MIT) and
+[volk](https://github.com/zeux/volk) (MIT) for frame generation.
 For Steam: [JavaSteam](https://github.com/Longi94/JavaSteam) (MIT) with protobuf (BSD-3),
 kotlinx.coroutines (Apache-2.0), [Bouncy Castle](https://www.bouncycastle.org/) (MIT),
 [XZ for Java](https://tukaani.org/xz/java.html) (public domain) and

@@ -134,8 +134,13 @@ EXPORT BOOL OpenStream(Movie *m, const char *path, int offset, int size, BOOL po
     return 1;
 }
 
+/* a movie's frame was drawn in the last half second (frame generation leaves movies alone) */
+static double movie_at = -1e9;
+EXPORT int ff9_movie_recent(void) { return now_ms() - movie_at < 500; }
+
 static void upload(Movie *m) {
     if (!m->haveFrame || m->uploadedFrame) return;
+    movie_at = now_ms();
     if (getenv("FF9_NO_MOVIE_UPLOAD")) { m->uploadedFrame = 1; m->uploadedTime = m->decodedTime; return; }
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     for (int i = 0; i < 3; i++) {

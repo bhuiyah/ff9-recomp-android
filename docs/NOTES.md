@@ -925,3 +925,19 @@ The swirl stayed black. Three things, all needed:
 - `files/steam/dry-run`: achievements are logged, not sent, and stay waiting.
 - Checked, nothing to do: Android 16's Java heap at 0x02000000 (lowmem.cpp uses MAP_FIXED_NOREPLACE
   from 0x10000000 up; x64jit.c and sfx_plugin.c map anywhere).
+
+## Frame generation (src/framegen, libff9fg.so; FF8Recomp #8)
+
+- lsfg-vk's engine (Vulkan 1.3 device of its own) on the player's Lossless.dll (`files/framegen`, never
+  shipped). `tools/build_framegen.sh` pins and patches it. Loaded only with Frame rate Original and the
+  option on (`FF9_FRAMEGEN`); the smooth rates never start it.
+- The engine's thread draws to a pbuffer; a frame goes to a texture (shared context) and a thread of the
+  library owns the window: AHardwareBuffers in, engine, made frames and the real one swapped with
+  `eglPresentationTimeANDROID`. Made on the game's thread, one frame (17 ms) halved a 30 fps field.
+- The window asks for 8 buffers (ANativeWindow perform, no NDK call): with the usual number the swaps wait.
+- No more are made than fit the game's target frame rate (a slow moment kept a field at 15), one is left
+  out while frames are late, and `k_lead` (15 ms) is what the compositor wants before a refresh.
+- Movies are passed through (`ff9_movie_recent`).
+- Thor, Adreno 740, 1080p: field 30 + 29 a second, 52 ms after; battle 336 15 + 45, 104 ms; title 60 + 0;
+  opening movie 15. SurfaceFlinger --latency: a new frame nearly every refresh. Sleep/resume works.
+  `FF9_TRACE_FRAMEGEN=1` in env.txt logs each frame. Other GPUs, stretch and swapped screens: not tested.

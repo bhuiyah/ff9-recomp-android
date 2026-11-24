@@ -877,6 +877,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
                 Os.setenv("FF9_GAME", gi.game.getPath(), true);
                 Os.setenv("LD_LIBRARY_PATH", nat, true);
                 Os.setenv("FF9_COMPANION", "1", true);
+                File fg = FrameGen.active(getSharedPreferences("launcher", MODE_PRIVATE), gi.files);
+                if (fg != null) Os.setenv("FF9_FRAMEGEN", fg.getPath(), true); else Os.unsetenv("FF9_FRAMEGEN");
                 Os.setenv("FF9_WORLDMAP_DIR", new File(gi.files, "worldmap").getPath(), true);   // the panels' world map (Core/Companion.cs)
                 Os.setenv("FF9_UI_SOUNDS", Sfx.dir(this).getPath(), true);   // the launcher's menu sounds (Core/UiSounds.cs)
                 // Settings > Language (engine Native/Compat.cs; -1: the game's own choice)

@@ -88,18 +88,26 @@ final class SteamFiles {
      * Downloads the game into game, then installs Memoria. Returns null when done, else what
      * stopped it ("stopped" when cancel was set; what was done stays).
      */
-    String downloadGame(GameInstall install, File game, Progress p, AtomicBoolean cancel) throws Exception {
+    String downloadGame(GameInstall install, File game, Progress p, AtomicBoolean cancel) throws Exception { return download(install, game, p, cancel, false); }
+
+    /** Lossless Scaling's Lossless.dll alone (FrameGen) into dir, from the account that owns it. */
+    String downloadLossless(GameInstall install, File dir, Progress p, AtomicBoolean cancel) throws Exception { return download(install, dir, p, cancel, true); }
+
+    private String download(GameInstall install, File game, Progress p, AtomicBoolean cancel, boolean lossless) throws Exception {
         MemoriaInstall memoria = new MemoriaInstall(install);
-        p.update("Downloading Memoria " + MemoriaInstall.VERSION);
-        File exe;
-        try { exe = memoria.fetch(p::update, cancel); }
-        catch (InterruptedException e) { return "stopped"; }
-        Set<String> memoriaFiles = MemoriaInstall.paths(exe);
+        Set<String> memoriaFiles = java.util.Collections.emptySet();
+        if (!lossless) {
+            p.update("Downloading Memoria " + MemoriaInstall.VERSION);
+            File exe;
+            try { exe = memoria.fetch(p::update, cancel); }
+            catch (InterruptedException e) { return "stopped"; }
+            memoriaFiles = MemoriaInstall.paths(exe);
+        }
 
         p.update("Connecting to Steam");
         try (SteamLink.Session s = link.open()) {
-            int app = SteamLink.APP_FF9;
-            if (!SteamLink.owns(s, app)) return NOT_OWNED;
+            int app = lossless ? FrameGen.APP : SteamLink.APP_FF9;
+            if (!SteamLink.owns(s, app)) return lossless ? "this Steam account does not own Lossless Scaling" : NOT_OWNED;
             p.update("Reading the game's file list from Steam");
             KeyValue depots = appInfo(s, app).get("depots");
             SteamApps apps = s.client.getHandler(SteamApps.class);
@@ -150,6 +158,10 @@ final class SteamFiles {
                         String n = f.getFileName().replace('\\', '/');
                         if (!n.toLowerCase(Locale.ROOT).startsWith(root)) continue;
                         String rel = n.substring(root.length());
+                        if (lossless) {
+                            if (!n.toLowerCase(Locale.ROOT).matches("(.*/)?lossless\\.dll")) continue;
+                            rel = "Lossless.dll";
+                        }
                         String low = rel.toLowerCase(Locale.ROOT);
                         if (rel.isEmpty() || GameInstall.skipped(rel) || memoriaFiles.contains(low) || wants.containsKey(low)) continue;
                         Want w = new Want();
@@ -161,7 +173,8 @@ final class SteamFiles {
                     }
                     Log.i(TAG, "depot " + id + ": " + m.getFiles().size() + " entries, root '" + root + "', " + taken + " taken");
                 }
-                if (!wants.containsKey("x64/ff9_data/maindata")) throw new IOException("Steam's copy of the game has no x64/FF9_Data/mainData");
+                if (lossless && wants.isEmpty()) throw new IOException("Steam's copy of Lossless Scaling has no Lossless.dll");
+                if (!lossless && !wants.containsKey("x64/ff9_data/maindata")) throw new IOException("Steam's copy of the game has no x64/FF9_Data/mainData");
 
                 // what is already here and intact stays
                 game.mkdirs();
@@ -213,6 +226,7 @@ final class SteamFiles {
                 if (!errors.isEmpty()) throw new IOException(errors.get(0));
             }
         }
+        if (lossless) return null;
         p.update("Installing Memoria " + MemoriaInstall.VERSION);
         memoria.install(game, p::update);
         if (game.equals(install.game)) install.configureMemoria();      // the SoLoud backend

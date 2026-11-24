@@ -45,7 +45,7 @@ import java.util.Map;
  * confirms, B goes back to the commands.
  */
 public class LauncherActivity extends Activity {
-    private static final int PICK_GAME = 1, PICK_SAVE = 2, EXPORT_SAVES = 3, PICK_STORAGE = 4;
+    private static final int PICK_GAME = 1, PICK_SAVE = 2, EXPORT_SAVES = 3, PICK_STORAGE = 4, PICK_LOSSLESS = 5;
     private static final int BG = Color.rgb(8, 9, 14), TEXT = 0xFFF2EEE2, DIM = 0xFFAEB0BC, ACCENT = 0xFFE8C66A;
     private static final int WIN_TOP = 0xFF5E6478, WIN_BOTTOM = 0xFF22252F, HOT_TOP = 0xFF8A8466, HOT_BOTTOM = 0xFF3E3A2A,
             BTN_TOP = 0xFF4A4F60, BTN_BOTTOM = 0xFF262935, BORDER = 0xFFDCD6C4, INNER = 0xFF3A3F50;
@@ -489,6 +489,7 @@ public class LauncherActivity extends Activity {
                 }
             }
         }
+        frameGenSection(col);
         TextView bh = heading("Buttons");
         bh.setPadding(0, dp(14), 0, dp(4));
         col.addView(bh);
@@ -544,6 +545,66 @@ public class LauncherActivity extends Activity {
         mr.addView(button("Edit Memoria.ini...", v -> editMemoriaIni()));
         col.addView(mr);
         return col;
+    }
+
+    /** Settings > Frame generation, with the player's own Lossless Scaling (FF8Recomp #8). */
+    private void frameGenSection(LinearLayout col) {
+        TextView h = heading("Frame generation");
+        h.setPadding(0, dp(14), 0, dp(4));
+        col.addView(h);
+        android.content.SharedPreferences p = Settings.prefs(this);
+        boolean have = FrameGen.dll(install.files).isFile();
+        CheckBox on = new CheckBox(this);
+        on.setText(withNote("Frame generation (Lossless Scaling)", "Shows up to 60 frames a second by making frames between the game's own, "
+                + "with Frame rate on Original. Needs your own Lossless Scaling (bought on Steam) and Vulkan 1.3. "
+                + "It adds a little delay and uses more battery; fast scenes can look smeared"));
+        on.setEnabled(have);
+        on.setChecked(have && p.getBoolean("framegen", false));
+        on.setOnCheckedChangeListener((b, x) -> {
+            p.edit().putBoolean("framegen", x).apply();
+            if (x && !FrameGen.useful(p.getInt("fps", 1))) status.setText("Frame generation works with Frame rate on Original: the smooth ones already fill in frames.");
+        });
+        col.addView(on);
+        if (have && !FrameGen.useful(p.getInt("fps", 1)))
+            col.addView(note("It does nothing with the smooth frame rates, which already fill in frames. Choose Original above to use it."));
+        if (!have) col.addView(note("FF9Recomp does not include it: it uses Lossless.dll (7 MB) from your own copy, downloaded from your Steam account or chosen here."));
+        ViewGroup r = buttons();
+        if (new SteamLink(this).signedIn()) r.addView(button(have ? "Get Lossless.dll from Steam again" : "Get Lossless.dll from your Steam", v -> losslessFromSteam()));
+        else r.addView(button("Sign in to Steam to get Lossless.dll", v -> steamSignIn()));
+        r.addView(button("Choose a Lossless.dll on this device", v -> startActivityForResult(
+                new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), PICK_LOSSLESS)));
+        col.addView(r);
+    }
+
+    private static boolean losslessBusy;
+
+    private void losslessFromSteam() {
+        if (losslessBusy || JobService.busy()) return;
+        losslessBusy = true;
+        status.setText("Getting Lossless.dll from Steam");
+        new Thread(() -> {
+            File tmp = new File(FrameGen.dir(install.files), "steam"), f = new File(tmp, "Lossless.dll");
+            String err;
+            try {
+                err = new SteamFiles(new SteamLink(this)).downloadLossless(install, tmp, w -> runOnUiThread(() -> status.setText(w)), new java.util.concurrent.atomic.AtomicBoolean());
+                if (err == null) try (java.io.InputStream in = new java.io.FileInputStream(f)) { err = FrameGen.install(in, install.files); }
+            } catch (Exception e) { err = SteamLink.message(e); }
+            f.delete();
+            new File(tmp, "Lossless.dll.part").delete();
+            tmp.delete();
+            losslessBusy = false;
+            losslessAdded(err);
+        }).start();
+    }
+
+    private void losslessAdded(String err) {
+        runOnUiThread(() -> {
+            if (err == null) {
+                Settings.prefs(this).edit().putBoolean("framegen", true).apply();
+                if (!isFinishing()) show("settings");
+            }
+            status.setText(err != null ? "Not added: " + err : "Lossless.dll added. Frame generation is on.");
+        });
     }
 
     /** Settings > Buttons: one button per controller button (ButtonMap), and a way back. focus: the one to land on, or -1. */
@@ -2040,6 +2101,18 @@ public class LauncherActivity extends Activity {
             return;
         }
         if (req == EXPORT_SAVES && res == RESULT_OK && data != null) { exportSaves(data.getData()); return; }
+        if (req == PICK_LOSSLESS) {
+            if (res != RESULT_OK || data == null || data.getData() == null) return;
+            Uri u = data.getData();
+            new Thread(() -> {
+                String err;
+                try (java.io.InputStream in = getContentResolver().openInputStream(u)) {
+                    err = in == null ? "the file cannot be read" : FrameGen.install(in, install.files);
+                } catch (Exception e) { err = String.valueOf(e.getMessage()); }
+                losslessAdded(err);
+            }).start();
+            return;
+        }
         if (req == PICK_STORAGE) { if (res == RESULT_OK && data != null) pickedStorageFolder(data.getData()); return; }
         if (req != PICK_GAME || res != RESULT_OK || data == null) return;
         Uri tree = data.getData();

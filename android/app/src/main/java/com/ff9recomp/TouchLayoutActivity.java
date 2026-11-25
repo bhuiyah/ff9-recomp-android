@@ -36,6 +36,7 @@ public class TouchLayoutActivity extends Activity {
         controls.setExtra(prefs.getBoolean("touch_extra", false));
         controls.setLeftStick(prefs.getBoolean("touch_left_stick", false));
         controls.setLayout(prefs.getString("touch_layout", ""));
+        controls.setHidden(prefs.getString("touch_hidden", ""));
         controls.setEditing(true, this::save);
         root.addView(controls, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -84,6 +85,10 @@ public class TouchLayoutActivity extends Activity {
         buzz.setChecked(prefs.getBoolean("touch_vibrate", true));
         buzz.setOnCheckedChangeListener((cb, on) -> prefs.edit().putBoolean("touch_vibrate", on).apply());
         panel.addView(buzz);
+        Button shown = new Button(this);
+        shown.setText("Buttons shown…");
+        shown.setOnClickListener(v -> buttonsShown(this, prefs, () -> controls.setHidden(prefs.getString("touch_hidden", ""))));
+        panel.addView(shown);
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER);
         Button reset = new Button(this);
@@ -117,6 +122,34 @@ public class TouchLayoutActivity extends Activity {
 
         setContentView(root);
         getWindow().getInsetsController().hide(WindowInsets.Type.systemBars());
+    }
+
+    /** Buttons shown (as FF7Recomp's GitHub #88): every on-screen button with a tick; untick one to hide it. Kept
+     *  at once in "touch_hidden"; changed runs after each change. */
+    static void buttonsShown(Activity a, SharedPreferences prefs, Runnable changed) {
+        int n = prefs.getBoolean("touch_extra", false) ? TouchControls.NAMES.length : TouchControls.NAMES_BASE;
+        String[] titles = java.util.Arrays.copyOf(TouchControls.TITLES, n);
+        java.util.Set<String> hidden = TouchControls.hiddenSet(prefs.getString("touch_hidden", ""));
+        boolean[] on = new boolean[n];
+        for (int i = 0; i < n; i++) on[i] = !hidden.contains(TouchControls.NAMES[i]);
+        android.app.AlertDialog d = new android.app.AlertDialog.Builder(a, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Buttons shown")
+                .setMultiChoiceItems(titles, on, (dlg, i, checked) -> {
+                    if (checked) hidden.remove(TouchControls.NAMES[i]); else hidden.add(TouchControls.NAMES[i]);
+                    prefs.edit().putString("touch_hidden", android.text.TextUtils.join(",", hidden)).apply();
+                    changed.run();
+                })
+                .setNeutralButton("Show all", null)
+                .setPositiveButton("Done", null)
+                .create();
+        d.show();
+        // Show all leaves the list open, so that its ticks show it worked
+        d.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+            hidden.clear();
+            prefs.edit().putString("touch_hidden", "").apply();
+            for (int i = 0; i < n; i++) { on[i] = true; d.getListView().setItemChecked(i, true); }
+            changed.run();
+        });
     }
 
     interface IntListener { void set(int v); }

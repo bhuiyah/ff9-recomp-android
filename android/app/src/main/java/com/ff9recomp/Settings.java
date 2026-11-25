@@ -44,6 +44,9 @@ final class Settings {
         // FF7Recomp's 1.1.35/1.1.36 (GameActivity.arrangeSide): one wide screen, the game and the panels beside each other
         new Option("side", "Side by side (wide screens)", "The game and the second screen's panels (party, map, items, Save/Load, speed) beside each other on one screen. Held upright it is like Portrait.", 0),
         new Option("side_left", "Side by side: panels on the left", "The panels at the game's left instead of its right. In the game, the button at the top of the panels hides them; the tab at the screen's edge brings them back.", 0),
+        // as FF7Recomp's GitHub #87 (PanelButton)
+        new Option("panel_button", "Button for the panels (one screen)", "A small button over the game, when it fills the screen, opens the second screen's panels (party, map, items, Save/Load, speed). "
+                + "Their arrow, or a tap on the game beside them, closes them. Drag the button to move it. A controller button can do it too (Controls).", 0),
         new Option("skip_intros", "Skip logos", "Straight to the title screen.", 1),
         new Option("speed", "Speed-up booster", "How fast the game runs while the High Speed booster is on.", 1,
                 "2x", "3x", "4x", "5x"),
@@ -52,11 +55,13 @@ final class Settings {
         new Option("swap_confirm", "Swap confirm and cancel", "B confirms and A cancels (Japanese layout).", 0),
         new Option("analog_run", "Analog walk and run", "Walk or run by how far the stick is pushed.", 1),
         new Option("bottom_screen", "Second screen panels", "On two-screen devices: party HP/MP, ATB, enemies and gil on the second screen. Off leaves it to other apps.", 1),
-        new Option("bottom_buttons", "Second screen buttons", "The command deck under the panels: Menu, Save, Load, Speed, Battles, Battle+.", 1),
+        new Option("bottom_buttons", "Second screen buttons", "The command deck under the panels, also where they are on the only screen: Menu, Save, Load, Speed, Battles, Battle+.", 1),
         new Option("panel_dim", "Dim the panels in cutscenes", "The second screen darkens while a scene plays and you have no control, and brightens when you have it again.", 1),
         new Option("swap_screens", "Swap screens", "The game on the second screen and the panels on the main one (for devices whose main screen is the small one).", 0),
         new Option("touch_controls", "Touch controls", "Auto: on screen only when no controller is connected.", 0,
                 "Auto", "Always", "Never"),
+        new Option("panel_key", "Open the panels with", "On one screen, this controller button opens and closes the panels over the game, or hides and shows Side by side's. The game doesn't get it then.", 0,
+                "Off", "Start", "L3", "R3"),
         new Option("rumble", "Rumble", "The game's vibration on the controller, or on the device.", 1, "Off", "Light", "Strong"),
         new Option("crt_filter", "CRT filter", "Scanlines and a soft vignette over the game and the panels.", 0),
         new Option("show_fps", "Show FPS", "Frames per second in the top corner.", 0),

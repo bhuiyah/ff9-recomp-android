@@ -37,6 +37,9 @@ import android.view.View;
  * Optional (Settings > On-screen controls > Size and layout, "Left stick instead of the D-pad",
  * GitHub #44): the D-pad's ring becomes an analog left stick (LX/LY), so a light push walks and a
  * full one runs.
+ *
+ * Any button can be hidden on its own (Settings > On-screen controls > Buttons shown, as FF7Recomp's
+ * GitHub #88): a hidden one is neither drawn nor pressed, and the others stay where they are.
  */
 final class TouchControls extends View {
     interface Listener { void pad(int buttons, int lt, int rt, int lx, int ly, int rx, int ry); }
@@ -51,6 +54,7 @@ final class TouchControls extends View {
     private static final class Btn {
         final int bit; final String label, hint; final boolean round;
         final RectF r = new RectF();
+        boolean hidden;   // Buttons shown
         Btn(int bit, String label, String hint, boolean round) { this.bit = bit; this.label = label; this.hint = hint; this.round = round; }
     }
 
@@ -75,6 +79,38 @@ final class TouchControls extends View {
         @Override public void run() { if (boostOpen) { invalidate(); postDelayed(this, 500); } }
     };
     private Btn[] buttons = base;
+
+    // Buttons shown: what each entry of the list is called in the "touch_hidden" setting (the hidden
+    // ones, separated by commas) and on the screen
+    static final String[] NAMES = { "DPAD", "A", "B", "X", "Y", "L1", "L2", "R1", "R2", "SELECT", "START", "BOOST", "L3", "R3", "STICK" };
+    static final String[] TITLES = { "D-pad or left stick", "A (OK)", "B (Back)", "X", "Y (Menu)", "L1", "L2", "R1", "R2", "SELECT", "START",
+            "BOOST", "L3", "R3", "Right stick" };
+    /** How many of them there are without the right stick, L3 and R3. */
+    static final int NAMES_BASE = 12;
+    private boolean padHidden, stickHidden;
+
+    static java.util.Set<String> hiddenSet(String hidden) {
+        java.util.Set<String> s = new java.util.LinkedHashSet<>();
+        if (hidden != null) for (String n : hidden.split(",")) if (!n.trim().isEmpty()) s.add(n.trim());
+        return s;
+    }
+
+    /** Hides these buttons ("touch_hidden"). */
+    void setHidden(String hidden) {
+        java.util.Set<String> s = hiddenSet(hidden);
+        padHidden = s.contains("DPAD");
+        stickHidden = s.contains("STICK");
+        for (Btn btn : withExtra) btn.hidden = s.contains(btn.label);
+        if (stickHidden) release();
+        if (padHidden) releaseLeft();
+        if (boost.hidden) { boostOpen = false; removeCallbacks(boostRefresh); }
+        if (getWidth() > 0) { place(getWidth(), getHeight()); invalidate(); }
+    }
+
+    /** A button, a stick or an open booster is there. */
+    boolean takes(float px, float py) { return hit(px, py) != 0 || onStick(px, py) || onPad(px, py) || inBoosters(px, py); }
+
+    private boolean stick() { return extra && !stickHidden; }
 
     // the right stick: its ring, the finger that holds it and where the knob is (-1..1)
     private boolean extra;
@@ -227,6 +263,7 @@ final class TouchControls extends View {
         for (int gi = 0; gi < groups(); gi++) {
             shift(gi, groupOff[2 * gi] * w, groupOff[2 * gi + 1] * h);
             RectF r = bounds(gi);
+            if (r == null) continue;
             float dx = r.left < 0 ? -r.left : r.right > w ? w - r.right : 0;
             float dy = r.top < 0 ? -r.top : r.bottom > h ? h - r.bottom : 0;
             if (dx != 0 || dy != 0) {
@@ -252,11 +289,12 @@ final class TouchControls extends View {
         for (Btn btn : members(g)) btn.r.offset(dx, dy);
     }
 
+    /** Where a group's shown buttons are; null when all of them are hidden. */
     private RectF bounds(int g) {
-        if (g == G_PAD) return new RectF(padX - padR, padY - padR, padX + padR, padY + padR);
-        if (g == G_STICK) return new RectF(stickX - stickR, stickY - stickR, stickX + stickR, stickY + stickR);
+        if (g == G_PAD) return padHidden ? null : new RectF(padX - padR, padY - padR, padX + padR, padY + padR);
+        if (g == G_STICK) return !stick() ? null : new RectF(stickX - stickR, stickY - stickR, stickX + stickR, stickY + stickR);
         RectF r = null;
-        for (Btn btn : members(g)) { if (r == null) r = new RectF(btn.r); else r.union(btn.r); }
+        for (Btn btn : members(g)) { if (btn.hidden) continue; if (r == null) r = new RectF(btn.r); else r.union(btn.r); }
         return r;
     }
 
@@ -268,16 +306,19 @@ final class TouchControls extends View {
             fill.setColor(0x30FFD54F);
             for (int g = 0; g < groups(); g++) {
                 RectF r = bounds(g);
+                if (r == null) continue;
                 r.inset(-unit * 0.15f, -unit * 0.15f);
                 fill.setColor(g == dragGroup ? 0x60FFD54F : 0x30FFD54F);
                 c.drawRoundRect(r, unit * 0.2f, unit * 0.2f, fill);
             }
         }
         // D-pad: a ring with four arrows; the pressed directions light up
-        fill.setColor(0x26FFFFFF);
-        c.drawCircle(padX, padY, padR, fill);
-        c.drawCircle(padX, padY, padR, line);
-        if (leftStick) {
+        if (!padHidden) {
+            fill.setColor(0x26FFFFFF);
+            c.drawCircle(padX, padY, padR, fill);
+            c.drawCircle(padX, padY, padR, line);
+        }
+        if (padHidden) { /* Buttons shown */ } else if (leftStick) {
             // the left stick: a knob that follows the finger
             float kr = padR * 0.45f, kx = padX + lKnobX * (padR - kr), ky = padY + lKnobY * (padR - kr);
             fill.setColor(padPointer >= 0 ? 0x90FFFFFF : 0x50FFFFFF);
@@ -290,7 +331,7 @@ final class TouchControls extends View {
             drawArrow(c, -1, 0, LEFT);
             drawArrow(c, 1, 0, RIGHT);
         }
-        if (extra) {
+        if (stick()) {
             // right stick: a ring and a knob that follows the finger
             fill.setColor(0x26FFFFFF);
             c.drawCircle(stickX, stickY, stickR, fill);
@@ -303,6 +344,7 @@ final class TouchControls extends View {
         }
         if (boostOpen) drawBoosters(c);
         for (Btn btn : buttons) {
+            if (btn.hidden) continue;
             boolean on = (state & btn.bit) != 0 || (btn == boost && boostOpen);
             fill.setColor(on ? 0x90FFFFFF : 0x26FFFFFF);
             float cy = btn.r.centerY() - (text.descent() + text.ascent()) / 2;
@@ -400,7 +442,7 @@ final class TouchControls extends View {
             boostTap(e.getX(i), e.getY(i));
         }
         if (act == MotionEvent.ACTION_CANCEL) { release(); releaseLeft(); }
-        else if (leftStick) {
+        else if (leftStick && !padHidden) {
             // the left stick, as the right one: the finger that lands on the ring holds it
             if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN) {
                 int i = e.getActionIndex();
@@ -415,7 +457,7 @@ final class TouchControls extends View {
                 lKnobX = dx; lKnobY = dy;
             } else if (padPointer >= 0) releaseLeft();
         }
-        if (act != MotionEvent.ACTION_CANCEL && extra) {
+        if (act != MotionEvent.ACTION_CANCEL && stick()) {
             if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN) {
                 int i = e.getActionIndex();
                 if (stickPointer < 0 && onStick(e.getX(i), e.getY(i))) stickPointer = e.getPointerId(i);
@@ -458,6 +500,7 @@ final class TouchControls extends View {
                 dragGroup = -1;
                 for (int g = 0; g < groups(); g++) {
                     RectF r = bounds(g);
+                    if (r == null) continue;
                     r.inset(-unit * 0.3f, -unit * 0.3f);
                     if (r.contains(e.getX(), e.getY())) { dragGroup = g; break; }
                 }
@@ -486,12 +529,12 @@ final class TouchControls extends View {
 
     /** Whether a finger at (px, py) takes the right stick. */
     private boolean onStick(float px, float py) {
-        return extra && Math.hypot(px - stickX, py - stickY) < stickR * 1.2f;
+        return stick() && Math.hypot(px - stickX, py - stickY) < stickR * 1.2f;
     }
 
     /** Whether a finger at (px, py) takes the left stick. */
     private boolean onPad(float px, float py) {
-        return leftStick && Math.hypot(px - padX, py - padY) < padR * 1.35f;
+        return leftStick && !padHidden && Math.hypot(px - padX, py - padY) < padR * 1.35f;
     }
 
     /** What a finger at (px, py) presses. */
@@ -499,7 +542,7 @@ final class TouchControls extends View {
         if (onStick(px, py) || onPad(px, py)) return 0;
         float dx = px - padX, dy = py - padY;
         float d = (float) Math.hypot(dx, dy);
-        if (d < padR * 1.35f) {
+        if (!padHidden && d < padR * 1.35f) {
             if (d < padR * 0.2f) return 0;                       // dead centre
             double ang = Math.toDegrees(Math.atan2(dy, dx));     // 0 = right, 90 = down
             int bits = 0;
@@ -512,6 +555,7 @@ final class TouchControls extends View {
         Btn best = null;
         float bestD = Float.MAX_VALUE;
         for (Btn btn : buttons) {
+            if (btn.hidden) continue;
             RectF r = btn.r;
             float grow = btn.round ? unit * 0.25f : unit * 0.15f;  // a little forgiveness around each
             if (px < r.left - grow || px > r.right + grow || py < r.top - grow || py > r.bottom + grow) continue;

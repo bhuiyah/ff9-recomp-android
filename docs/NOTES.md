@@ -985,3 +985,13 @@ The swirl stayed black. Three things, all needed:
   new order (FF9_TEST_FIELDS, screenrecord): 1009, 1015, 1017, 1050 and 2850 broken before, right
   now; 500, 607, 116, 657, 52, 614, 2403, 1464, 855, 1604, 2909, 2700, 1151, 658, 2303, 905 no
   damage seen. A sideways shift in 2303 comes and goes in both orders (not looked into).
+
+## The panels over the game on one screen; any on-screen button can be hidden (0.1.56, as FF7Recomp's #87 and #88)
+
+- PanelButton.Layer wraps the game's frame when `panel_button` or `panel_key` is on, in the usual layout, while no second screen shows
+  the panels (swapped screens: CompanionHostActivity, or it is starting). The panels (CompanionView) are in the window only while open:
+  the header's arrow or a tap (not a drag, not on an on-screen control) on the game beside them closes them. arrange() takes the layer apart.
+- Controls > Open the panels with: Off, Start, L3, R3 (GameActivity.panelKey, after Settings > Buttons; a hotkey's button is taken
+  before). Acts when let go; the game does not get it. With Select or the other stick's button held it passes. Also hides and shows
+  Side by side's panels.
+- `touch_hidden` (names separated by commas, TouchControls.NAMES; FF9 has BOOST too): hidden buttons are neither drawn nor pressed.

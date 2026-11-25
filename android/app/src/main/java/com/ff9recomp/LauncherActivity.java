@@ -451,9 +451,9 @@ public class LauncherActivity extends Activity {
 
     private static final String[][] GROUPS = {
         { "Frame rate", "fps" },
-        { "Display", "resolution", "stretch", "widescreen", "portrait", "side", "side_left", "skip_intros", "crt_filter", "show_fps" },
+        { "Display", "resolution", "stretch", "widescreen", "portrait", "side", "side_left", "panel_button", "skip_intros", "crt_filter", "show_fps" },
         { "Game", "start", "boosters", "speed", "turbo_dialog" },
-        { "Controls", "swap_confirm", "analog_run", "touch_controls", "rumble" },
+        { "Controls", "swap_confirm", "analog_run", "touch_controls", "panel_key", "rumble" },
         { "Screens", "bottom_screen", "bottom_buttons", "panel_dim", "swap_screens" },
         { "Sound", "menu_sounds", "music_volume", "sound_volume" },
     };
@@ -465,6 +465,7 @@ public class LauncherActivity extends Activity {
             case "start": return new String[] { "As shipped", "Straight back to the place you were last" }[i];
             case "resolution": return new String[] { "The screen's own", "Cooler, a little softer", "Coolest, for weaker devices", "Blocky: only when the GPU is what holds it back" }[i];
             case "touch_controls": return new String[] { "Only when no controller is connected", "Always on screen", "Never" }[i];
+            case "panel_key": return new String[] { null, "Pauses the game without this", "The High Speed booster without this, unless Memoria's settings changed it", "Fast dialog without this, unless Memoria's settings changed it" }[i];
             case "stretch": return new String[] { "Black bars where the picture is narrower than the screen",
                     "Areas drawn 4:3 are stretched sideways to the screen's width",
                     "Also the 16:9 picture on wider screens (most phones), and the bars above and below on squarer ones" }[i];
@@ -523,8 +524,9 @@ public class LauncherActivity extends Activity {
                     c.setChecked(Settings.get(this, o) != 0);
                     c.setOnCheckedChangeListener((x, on) -> { Settings.set(this, o, on ? 1 : 0); updateStatus(); });
                     col.addView(c);
-                } else if (o.choices.length <= 3 || o.key.equals("resolution")) {
+                } else if (o.choices.length <= 3 || o.key.equals("resolution") || o.key.equals("panel_key")) {
                     if (g.length > 2) col.addView(text(o.label, 15, ACCENT));
+                    if (o.key.equals("panel_key")) col.addView(note(o.note));
                     RadioGroup rg = new RadioGroup(this);
                     int cur = Settings.get(this, o);
                     for (int i = 0; i < o.choices.length; i++) {
@@ -588,6 +590,7 @@ public class LauncherActivity extends Activity {
         col.addView(space(8));
         ViewGroup r = buttons();
         r.addView(button("Arrange touch controls", v -> startActivity(new Intent(this, TouchLayoutActivity.class))));
+        r.addView(button("Touch buttons shown", v -> TouchLayoutActivity.buttonsShown(this, Settings.prefs(this), () -> { })));
         col.addView(r);
         TextView mh = heading("Memoria");
         mh.setPadding(0, dp(14), 0, dp(4));

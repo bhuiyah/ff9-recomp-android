@@ -55,7 +55,8 @@ and I would rather you know before you install it.
 - Moguri Mod and the rest of Memoria's catalog. That includes the 2K and 4K video packs, which
   play at full resolution.
 - Controller support, analog walk and run, swap confirm and cancel. On-screen touch controls for
-  devices with no controller, with a layout you can arrange, and a BOOST button for the boosters.
+  devices with no controller, with a layout you can arrange, buttons you can hide, and a BOOST button
+  for the boosters.
 - The game's boosters (High Speed with a choice of speed, Battle Assistance, No Encounters,
   9999 damage) and fast dialogue.
 - A CRT filter (**Settings** → **Display**): scanlines and a phosphor mask.
@@ -75,6 +76,8 @@ and I would rather you know before you install it.
 - The book at the bottom screen's top right opens [Pixel Guide](https://pixelguide.app) on the
   bottom screen, with a back arrow to the panels. Without Pixel Guide, the book downloads it from
   its GitHub releases, and Android asks you to confirm the install.
+- The same panels on one screen: beside the game (**Side by side**), under it (**Portrait**), or over it,
+  opened by a small button or a controller button.
 - Save states: Select+R1 in game keeps your place, in 10 slots.
 - Steam achievements, sent to your Steam account when you sign in with a QR code.
 

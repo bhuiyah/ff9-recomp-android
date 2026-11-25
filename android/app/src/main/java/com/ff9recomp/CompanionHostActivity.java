@@ -19,7 +19,7 @@ public class CompanionHostActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (GameActivity.current == null) { finish(); return; }
         setContentView(new CompanionView(this));
-        GameActivity.current.companionHost = this;
+        GameActivity.current.hostChanged(this);
     }
 
     @Override
@@ -39,7 +39,7 @@ public class CompanionHostActivity extends Activity {
     @Override
     protected void onDestroy() {
         GameActivity g = GameActivity.current;
-        if (g != null && g.companionHost == this) g.companionHost = null;
+        if (g != null && g.companionHost == this) g.hostChanged(null);
         super.onDestroy();
     }
 }

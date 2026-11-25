@@ -47,6 +47,7 @@ public class TestControl extends BroadcastReceiver {
         TYPES.put("button_map", String.class);      // ButtonMap: "1,0,2,3,4,5,6,7,8,9,10,11"
         // On-screen controls > Size and layout: right stick, L3 and R3
         TYPES.put("touch_extra", Boolean.class);
+        TYPES.put("touch_hidden", String.class);    // Buttons shown: "L2,R2,DPAD" hides these
         for (String k : GameActivity.HOTKEYS) TYPES.put(k, Integer.class);   // key codes, 0 = none
         TYPES.put("touch_left_stick", Boolean.class);
         TYPES.put("touch_vibrate", Boolean.class);

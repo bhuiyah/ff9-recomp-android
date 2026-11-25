@@ -451,6 +451,12 @@ public static class Pipeline {
     // ---- camera rendering ----
     sealed class DrawItem { public NRenderer R = null!; public NMesh Mesh = null!; public int Sub; public NMaterial Mat = null!; public int Queue; public float Dist; public int Order; public int Seq; public Matrix4x4 Model; }
 
+    // Field background layers at the same depth: the later one is drawn first, so the earlier one is
+    // on top, as on the PSX (Cleyra's trunk drew its sky over the tree, GitHub #63).
+    // FF9_TEST_LAYERTIES=1: in creation order, as before.
+    static readonly bool OldLayerTies = Environment.GetEnvironmentVariable("FF9_TEST_LAYERTIES") == "1";
+    static bool FieldLayer(NMaterial m) => !OldLayerTies && m.Shader?.Name is { } n && n.StartsWith("PSX/FieldMap_Abr", StringComparison.Ordinal);
+
     static readonly int SkipQueue = int.TryParse(Environment.GetEnvironmentVariable("FF9_SKIP_Q"), out var sq) ? sq : -1;
     static readonly int OnlyQueue = int.TryParse(Environment.GetEnvironmentVariable("FF9_ONLY_Q"), out var oq) ? oq : -1;
     static readonly string? SkipShader = Environment.GetEnvironmentVariable("FF9_SKIP_SHADER");
@@ -761,7 +767,7 @@ public static class Pipeline {
                 var mat = i < r.Materials.Length ? Materials.Of(r.Materials[i]) : null;
                 if (mat == null) continue;
                 int sub = Math.Min(i, mesh.SubMeshes.Count - 1);
-                items.Add(new DrawItem { R = r, Mesh = mesh, Sub = sub, Mat = mat, Queue = mat.RenderQueue, Dist = -vpos.z, Order = r.SortingOrder, Seq = seq++, Model = model });
+                items.Add(new DrawItem { R = r, Mesh = mesh, Sub = sub, Mat = mat, Queue = mat.RenderQueue, Dist = -vpos.z, Order = r.SortingOrder, Seq = FieldLayer(mat) ? -seq++ : seq++, Model = model });
             }
         }
         items.Sort((a, b) => {

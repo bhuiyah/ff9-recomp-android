@@ -973,3 +973,15 @@ The swirl stayed black. Three things, all needed:
   lists, Item L1/R1, Key, Ability > Use/Equip checked.
 - CompanionView's enemy list (two or more enemies): Steal/Drops drew over the 36-high chips and the
   names began 80 units in, narrower than "Drops" in the game's font; both are measured now.
+
+## Field layers at the same depth (0.1.55, GitHub #63)
+
+- Cleyra's trunk (maps 1009, 1015, 1017): the sky covered the tree and the ground. Those fields have
+  two full background layers at depth 4080, and ties were drawn in creation order, so the later one
+  ended on top. The earlier layer must be on top (as with the PSX's ordering table, which draws the
+  last primitive added first). Pipeline: field layers (PSX/FieldMap_Abr*) tie in reverse creation
+  order. FF9_TEST_LAYERTIES=1 is the old order.
+- About 320 of 875 field backgrounds have some overlapping tiles at equal depth. Thor, old against
+  new order (FF9_TEST_FIELDS, screenrecord): 1009, 1015, 1017, 1050 and 2850 broken before, right
+  now; 500, 607, 116, 657, 52, 614, 2403, 1464, 855, 1604, 2909, 2700, 1151, 658, 2303, 905 no
+  damage seen. A sideways shift in 2303 comes and goes in both orders (not looked into).

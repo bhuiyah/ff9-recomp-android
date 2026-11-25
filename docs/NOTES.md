@@ -995,3 +995,4 @@ The swirl stayed black. Three things, all needed:
   before). Acts when let go; the game does not get it. With Select or the other stick's button held it passes. Also hides and shows
   Side by side's panels.
 - `touch_hidden` (names separated by commas, TouchControls.NAMES; FF9 has BOOST too): hidden buttons are neither drawn nor pressed.
+- Before a game is under way the panels are blank but for the hide button (CompanionView.hideButton), in Side by side too.

@@ -204,9 +204,13 @@ public class CompanionView extends View {
         int w = getWidth(), h = getHeight();
         c.drawColor(BG);
         hits.clear();
-        if (state.optInt("ready") != 1) return;     // blank until a game is under way
-        final boolean nar = narrow();
+        final boolean ready = state.optInt("ready") == 1, nar = narrow();
         float u = nar ? Math.min(h / 1500f, w / 620f) : Math.min(w, h) / 1080f, pad = 14 * u, gap = 12 * u;
+        if (!ready) {      // blank until a game is under way, but for the button that hides the panels
+            panelBox.setEmpty();
+            if (onHide != null) hideButton(c, new RectF(pad, pad, w - pad, pad + (nar ? 84 : 96) * u), u);
+            return;
+        }
         String mode = state.optString("mode");
         boolean battle = "battle".equals(mode), world = "world".equals(mode);
 
@@ -218,11 +222,7 @@ public class CompanionView extends View {
         float rowB = nar ? head.top + 84 * u : head.bottom;     // the first row's bottom
         float hl = head.left, hr = head.right;                   // the first row's room
         if (onHide != null) {          // Side by side: hide the panels, at the edge next to the game
-            float hs = Math.min(rowB - head.top - 24 * u, 60 * u);
-            float hx = hideAtLeft ? head.left + 14 * u : head.right - 14 * u - hs;
-            RectF hb = new RectF(hx, head.top + (rowB - head.top - hs) / 2, hx + hs, head.top + (rowB - head.top + hs) / 2);
-            drawHideButton(c, hb, pressed != null && pressed.kind == H_PANELS, u);
-            hits.add(new Hit(new RectF(hb.left - 10 * u, head.top, hb.right + 10 * u, rowB), H_PANELS, 0));
+            RectF hb = hideButton(c, new RectF(head.left, head.top, head.right, rowB), u);
             if (hideAtLeft) hl = hb.right; else hr = hb.left - 6 * u;
         }
         float right = hr - 24 * u;
@@ -828,6 +828,16 @@ public class CompanionView extends View {
     }
 
     /** The hide button: a small window with a chevron pointing to the panels' outer edge. */
+    /** The button that hides the panels, in the header's first row, and its touch area. */
+    private RectF hideButton(Canvas c, RectF row, float u) {
+        float hs = Math.min(row.height() - 24 * u, 60 * u);
+        float hx = hideAtLeft ? row.left + 14 * u : row.right - 14 * u - hs, hy = row.centerY() - hs / 2;
+        RectF hb = new RectF(hx, hy, hx + hs, hy + hs);
+        drawHideButton(c, hb, pressed != null && pressed.kind == H_PANELS, u);
+        hits.add(new Hit(new RectF(hb.left - 10 * u, row.top, hb.right + 10 * u, row.bottom), H_PANELS, 0));
+        return hb;
+    }
+
     private void drawHideButton(Canvas c, RectF b, boolean hot, float u) {
         window(c, b, u);
         if (hot) { fill.setShader(null); fill.setColor(0x55FFFFFF); c.drawRoundRect(b, 10 * u, 10 * u, fill); }
@@ -983,7 +993,6 @@ public class CompanionView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent e) {
-        if (state.optInt("ready") != 1) { pressed = null; return true; }
         float x = e.getX(), y = e.getY();
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN: {

@@ -957,3 +957,19 @@ The swirl stayed black. Three things, all needed:
   change fixed it wasn't looked into.
 - FF9_TEST_IMMORTAL=2 also holds the enemies at 1 HP (`-memoria-battle 1 -memoria-seed 1`: two A presses
   win it and end on the results screen).
+
+## Lists scrolled by their discarded rows; second-screen spacing (0.1.54, GitHub #61, #62)
+
+- Battle ability lists opened on the previous list's row (Wht Mag row 5, cancel, Summon: row 5), or
+  blank. `RefreshPool` Destroys the old rows, which live to the end of the frame. They are first in
+  ButtonGroupList, so the ActiveGroup setter took the old list's cursor row, and one that had not
+  started yet got Start, was selected at its place below the new rows and began a SpringPanel there
+  (trace: `row=0 OUT y=-635 spring=540`). Since 0.1.51 RepositionList no longer stops that scroll.
+- Object.Destroy deactivates a GameObject with a RecycleListItem at once (FF9_TEST_KEEPROWS=1: as
+  before). Whether the PC game shows the old cursor row is not known.
+- Thor, battle 336 `-memoria-party 2`, Garnet's spells at AP 0: with KEEPROWS, 4 of 4 Summon opens
+  from row 5, 12, 15, 9 started wrong (row 5, or the discarded row for a frame); without, row 0 each
+  time, and the row is kept after a target is cancelled. The fully blank list was not caught. Item
+  lists, Item L1/R1, Key, Ability > Use/Equip checked.
+- CompanionView's enemy list (two or more enemies): Steal/Drops drew over the 36-high chips and the
+  names began 80 units in, narrower than "Drops" in the game's font; both are measured now.

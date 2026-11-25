@@ -68,7 +68,12 @@ static class ObjectIcalls {
         if (n.IsAsset) { Log.Warn($"Destroy on asset {n} ignored"); return; }
         if (n is NMonoBehaviour mb && t <= 0) mb.Enabled = mb.Enabled;   // OnDisable happens at destroy time
         Destroyer.Destroy(n, t);
+        // A list's rows (RecycleListPopulator.RefreshPool) leave at once: until the end of the frame the
+        // discarded ones still answered as the cursor's row, and their Start scrolled the new list to
+        // where they were (a blank Summon list; a cursor part way down: GitHub #61).
+        if (t <= 0 && !keepOldRows && n is NGameObject go && go.Managed is GameObject m && go.Components.Any(c => c.Managed is RecycleListItem)) GameObjectIcalls.SetActive(m, false);
     }
+    static readonly bool keepOldRows = Environment.GetEnvironmentVariable("FF9_TEST_KEEPROWS") != null;   // tests: as before
 
     [Icall("UnityEngine.Object::DestroyImmediate")]
     static void DestroyImmediate(UObject obj, bool allowAssets) {

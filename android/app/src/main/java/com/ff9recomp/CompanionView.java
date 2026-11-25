@@ -492,19 +492,20 @@ public class CompanionView extends View {
                 y = textRow(c, in, y, "Left to steal", join(e.optJSONArray("steal"), "nothing left"), GOLD, u);
                 y = textRow(c, in, y, "Drops", join(e.optJSONArray("drop"), "-"), TEXT, u);
             } else {
-                // compact: one line of chips (weak, absorbs, immune), one of steal and drops
+                // compact: one line of chips (weak, absorbs, immune), one of steal, one of drops
                 float x = in.left;
                 x = chips(c, x, y, in.right, e.optJSONArray("weak"), 0, "Weak", u);
                 x = chips(c, x, y, in.right, e.optJSONArray("absorb"), 1, "Absorbs", u);
-                chips(c, x, y, in.right, e.optJSONArray("immune"), 2, "Immune", u);
-                y += 46 * u;
+                x = chips(c, x, y, in.right, e.optJSONArray("immune"), 2, "Immune", u);
+                y += (x > in.left ? 70 : 24) * u;   // the next baseline: clear of the 36-high chips
                 text.setTypeface(sans);
-                String steal = join(e.optJSONArray("steal"), "nothing left");
-                label(c, "Steal", in.left, y + 4 * u, 24 * u, LABEL, Paint.Align.LEFT);
-                label(c, ellipsize(steal, in.width() - 90 * u, 24 * u), in.left + 80 * u, y + 4 * u, 24 * u, GOLD, Paint.Align.LEFT);
-                y += 34 * u;
-                label(c, "Drops", in.left, y + 4 * u, 24 * u, LABEL, Paint.Align.LEFT);
-                label(c, ellipsize(join(e.optJSONArray("drop"), "-"), in.width() - 90 * u, 24 * u), in.left + 80 * u, y + 4 * u, 24 * u, TEXT, Paint.Align.LEFT);
+                text.setTextSize(24 * u);
+                float lx = in.left + Math.max(text.measureText("Steal"), text.measureText("Drops")) + 14 * u;
+                label(c, "Steal", in.left, y, 24 * u, LABEL, Paint.Align.LEFT);
+                label(c, ellipsize(join(e.optJSONArray("steal"), "nothing left"), in.right - lx, 24 * u), lx, y, 24 * u, GOLD, Paint.Align.LEFT);
+                y += 36 * u;
+                label(c, "Drops", in.left, y, 24 * u, LABEL, Paint.Align.LEFT);
+                label(c, ellipsize(join(e.optJSONArray("drop"), "-"), in.right - lx, 24 * u), lx, y, 24 * u, TEXT, Paint.Align.LEFT);
                 y += 22 * u;
             }
             y += 18 * u;

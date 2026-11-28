@@ -729,6 +729,14 @@ The swirl stayed black. Three things, all needed:
 - Tested on the Thor (touch_controls 1, world map save 1:2): the row opens, High speed and 9999
   damage turn on and off (log "panel: booster HighSpeedMode on/off", "Attack9999 on/off", the
   pills turn gold), BOOST closes the row, and Y still opens the menu.
+- 0.1.57 (GitHub #64): the row only fit between L1 and R1 on wide screens; on the Galaxy Z Fold's
+  inner screen (2160x1856, unit = min(w,h)/8 so only ~9.3 units wide) the boxes were squeezed to
+  ~0.5 units and the names overlapped. BoostLayout (no Android types) now picks, after the groups'
+  offsets are applied: the top row when every box can be at least the widest name + 0.3 units
+  without touching a shown button; else a row at SELECT/START height between them; else two by
+  two there. Checked on the PC with the button geometry of place() for the Fold (2x2), the Thor
+  and a 20:9 phone (top row, as before), 4:3 (low row) and with the extras and other sizes: no
+  box overlaps a button or another box. Not seen on a device.
 
 ## Steam Cloud Upload goes to Steam at once (0.1.35, GitHub #21)
 

@@ -251,10 +251,8 @@ final class TouchControls extends View {
         // BOOST under START (under R3 with the extras)
         float pyb = (extra ? py3 : py) + ph + unit * 0.2f;
         boost.r.set(w - m - pw, pyb, w - m, pyb + ph);
-        // the boosters' row: top middle, between the shoulders
-        float bw = unit * 1.9f, bh = unit * 0.75f, gap = unit * 0.15f, rx = (w - 4 * bw - 3 * gap) / 2f, ry = m;
-        if (rx < l1.r.right + gap) { bw = (w - 2 * (l1.r.right + gap) - 3 * gap) / 4f; rx = l1.r.right + gap; }
-        for (int i = 0; i < 4; i++) boostRects[i].set(rx + i * (bw + gap), ry, rx + i * (bw + gap) + bw, ry + bh);
+        boostTop = m;
+        boostLow = py;
         // the right stick, above the face buttons
         stickR = unit * 0.85f;
         stickX = fx;
@@ -272,6 +270,19 @@ final class TouchControls extends View {
                 groupOff[2 * gi + 1] += dy / h;
             }
         }
+        placeBoosters(w);
+    }
+
+    private float boostTop, boostLow;
+
+    /** The boosters: at the top between the shoulders if they fit, else lower down (BoostLayout, GitHub #64). */
+    private void placeBoosters(int w) {
+        float nameW = 0;
+        for (String n : BOOST_NAMES) nameW = Math.max(nameW, small.measureText(n));
+        java.util.ArrayList<float[]> shown = new java.util.ArrayList<>();
+        for (Btn btn : buttons) if (!btn.hidden) shown.add(new float[] { btn.r.left, btn.r.top, btn.r.right, btn.r.bottom });
+        float[][] at = BoostLayout.place(w, unit, nameW, boostTop, boostLow, shown.toArray(new float[0][]));
+        for (int i = 0; i < 4; i++) boostRects[i].set(at[i][0], at[i][1], at[i][2], at[i][3]);
     }
 
     private Btn[] members(int g) {
